@@ -11,7 +11,7 @@ The 15 skills are organized into three domains:
 - **Bridge-side** (cross-chip): `bridge`, `arduino-app-lab`
 - **Linux-side** (MPU): `wireless`, `vision`, `audio`, `linux-led`, `modulino` (+ inherited general skills)
 
-The full evaluation rationale lives in `docs/QClaw/eval/whitepaper.md`. The capability gap analysis that motivated the 7 new skills and 4 new tools is in `docs/QClaw/eval/capability-integration.md`; the implementation record is in `docs/QClaw/eval/capability-integration.md`.
+The full evaluation rationale lives in `docs/QClaw/whitepaper.md`. The capability gap analysis that motivated the 7 new skills and 4 new tools is in `docs/QClaw/capability-integration.md`; the implementation record is in `docs/QClaw/capability-integration.md`.
 
 ---
 
@@ -219,7 +219,7 @@ The STM32U585 has 2 MB of flash split into two 1 MB banks. Sketches must be writ
 | Bank 2 start | `0x08100000` | — | **Sketch partition (boards.txt: `unoq.upload.address`)** |
 | Bank 2 remainder | `0x08100000`–`0x081FFFFF` | 1 MB | Sketch code + data |
 
-The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` and silently writes sketches into the reserved area, where they never execute. QClaw's arduino tool invokes OpenOCD directly at `0x8100000` to avoid this. Root-cause analysis: `docs/QClaw/eval/whitepaper.md` §8.
+The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` and silently writes sketches into the reserved area, where they never execute. QClaw's arduino tool invokes OpenOCD directly at `0x8100000` to avoid this. Root-cause analysis: `docs/QClaw/whitepaper.md` §8.
 
 ---
 
@@ -378,7 +378,7 @@ void loop() {
 }
 ```
 
-**Prompt specificity note:** At 0.8B scale, ambient prompts like "blink pin 13 every 500ms" sometimes produce the sketch in markdown without firing the `arduino` tool. Directive prompts naming the tool ("Use the arduino tool to...") raise tool-call reliability to ~100%. This is documented in `docs/QClaw/eval/whitepaper.md` Demo 2.
+**Prompt specificity note:** At 0.8B scale, ambient prompts like "blink pin 13 every 500ms" sometimes produce the sketch in markdown without firing the `arduino` tool. Directive prompts naming the tool ("Use the arduino tool to...") raise tool-call reliability to ~100%. This is documented in `docs/QClaw/whitepaper.md` Demo 2.
 
 ### Path 1b: LED Matrix Scroll (the canonical agentic demo)
 

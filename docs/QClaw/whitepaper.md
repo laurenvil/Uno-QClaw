@@ -544,4 +544,4 @@ The system has been verified end-to-end: "QClaw" scrolls across the physical LED
 
 ---
 
-*All source code lives in the `qclaw-v3` branch of `github.com/laurenvil/QClaw`. Evaluation artifacts are under `docs/QClaw/eval/v3/Artifacts/Run 7/`.*
+*All source code lives in the `qclaw-v3` branch of `github.com/laurenvil/QClaw`. Evaluation artifacts are under `docs/QClaw/v3/Artifacts/Run 7/`.*

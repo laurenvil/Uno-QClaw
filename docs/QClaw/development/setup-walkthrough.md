@@ -6,7 +6,7 @@ v3 ships **two execution paths**:
 - **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 4 tools (read/write/list/arduino); can compile and flash sketches end-to-end.
 - **Direct** (`make qclaw-direct`) — pre-router + single LLM call, no tools; faster Q&A but cannot compile or upload.
 
-Both paths share the same install, workspace, and skills tree. You pick the path when you launch (Step 5). See `docs/QClaw/eval/whitepaper.md` for the design rationale.
+Both paths share the same install, workspace, and skills tree. You pick the path when you launch (Step 5). See `docs/QClaw/whitepaper.md` for the design rationale.
 
 ---
 
@@ -190,7 +190,7 @@ To upload to the connected board:
 You: Use the arduino tool to upload a blink sketch for D9.
 ```
 
-**Naming the tool explicitly matters at 0.8B scale.** v3 evaluation found that ambient prompts ("write a blink sketch and upload it") sometimes produce a correct sketch in markdown without firing the tool. Directive prompts ("Use the arduino tool to upload...") trigger the tool reliably. See `docs/QClaw/eval/whitepaper.md` for the full analysis.
+**Naming the tool explicitly matters at 0.8B scale.** v3 evaluation found that ambient prompts ("write a blink sketch and upload it") sometimes produce a correct sketch in markdown without firing the tool. Directive prompts ("Use the arduino tool to upload...") trigger the tool reliably. See `docs/QClaw/whitepaper.md` for the full analysis.
 
 To check which boards are connected:
 

@@ -142,7 +142,7 @@ The pre-router (`pkg/agent/skill_preload.go`, mirrored for the direct path in `s
 | Linux-side capabilities | `wireless`, `vision`, `audio`, `linux-led` | `Wi-Fi`, `Bluetooth`, `camera`, `OpenCV`, `microphone`, `red:user` |
 | Plug-and-play sensors | `modulino` | `Modulino`, `ModulinoDistance` |
 
-The `arduino` tool compiles via `arduino-cli`, then flashes via OpenOCD directly to the STM32U585 sketch partition at `0x8100000`. (The pre-installed `arduino-flash` wrapper hardcodes `0x80F0000`, which lands in a reserved area near the end of bank 1 and never executes — see `docs/QClaw/eval/whitepaper.md` for the root-cause analysis.)
+The `arduino` tool compiles via `arduino-cli`, then flashes via OpenOCD directly to the STM32U585 sketch partition at `0x8100000`. (The pre-installed `arduino-flash` wrapper hardcodes `0x80F0000`, which lands in a reserved area near the end of bank 1 and never executes — see `docs/QClaw/whitepaper.md` for the root-cause analysis.)
 
 Everything runs locally over `127.0.0.1:8080`.
 
@@ -252,9 +252,9 @@ UnoQClaw/
 | `docs/QClaw/development/setup-walkthrough.md` | Step-by-step from a fresh Uno Q to a running QClaw |
 | `docs/QClaw/development/architecture-study-bible.md` | Dual-processor architecture, pin tables, voltage rules, data paths |
 | `docs/QClaw/development/UnoQ-datasheet.pdf` | Official Arduino Uno Q hardware datasheet |
-| `docs/QClaw/eval/whitepaper.md` | Architecture and evaluation whitepaper |
-| `docs/QClaw/eval/capability-integration.md` | Skill, reference, and tool integration record |
-| `docs/QClaw/eval/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
+| `docs/QClaw/whitepaper.md` | Architecture and evaluation whitepaper |
+| `docs/QClaw/capability-integration.md` | Skill, reference, and tool integration record |
+| `docs/QClaw/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
 
 ---
 

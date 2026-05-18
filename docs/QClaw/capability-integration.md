@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-16
 **Branch:** `qclaw-v3`
-**Predecessor:** `docs/QClaw/eval/capability-integration.md` — the inventory of Uno Q datasheet capabilities not covered by QClaw v3's initial surface.
+**Predecessor:** `docs/QClaw/capability-integration.md` — the inventory of Uno Q datasheet capabilities not covered by QClaw v3's initial surface.
 **Scope:** Implementation record for the three waves that closed the identified gaps.
 
 ---
@@ -345,9 +345,9 @@ config/qclaw.config.json         +4 enabled-true blocks (camera/sysfs_led/networ
 
 ## See also
 
-- `docs/QClaw/eval/capability-integration.md` — the prior doc that motivated this work.
-- `docs/QClaw/eval/whitepaper.md` — overall v3 architecture and evaluation rationale.
-- `docs/QClaw/eval/whitepaper.md` — agentic-path baseline before the wave additions.
-- `docs/QClaw/eval/whitepaper.md` — direct-path baseline before the wave additions.
+- `docs/QClaw/capability-integration.md` — the prior doc that motivated this work.
+- `docs/QClaw/whitepaper.md` — overall v3 architecture and evaluation rationale.
+- `docs/QClaw/whitepaper.md` — agentic-path baseline before the wave additions.
+- `docs/QClaw/whitepaper.md` — direct-path baseline before the wave additions.
 - `pkg/agent/skill_preload.go` — current authoritative rule list (23 entries).
 - `config/qclaw.config.json` — current authoritative tool enable/disable list.
