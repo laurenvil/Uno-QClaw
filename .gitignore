@@ -41,6 +41,12 @@ tasks/
 # Plans
 docs/plans/
 
+# Release / marketing drafts (kept locally, not published)
+docs/QClaw/hackster-release-article.md
+
+# Local agent instructions (not published)
+CLAUDE.md
+
 # Editors
 .vscode/
 .idea/

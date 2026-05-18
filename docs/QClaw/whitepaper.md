@@ -1,8 +1,8 @@
-# QClaw v3: On-Device AI for Embedded Learning — Architecture, Evaluation, and Results
+# QClaw v3: On-Device Agentic AI for Embedded Systems — Architecture, Evaluation, and Results
 
 **A Technical Whitepaper**
 **Branch:** `qclaw-v3` · **Date:** 2026-05-15
-**Hardware:** Arduino Uno Q (QRB2210) · **Models:** Qwen3.5-0.8B-Q4_0, Qwen3-0.6B-Q4_0
+**Hardware:** Arduino Uno Q (QRB2210) · **Model:** Qwen3.5-0.8B-Q4_0
 
 ---
 
@@ -16,7 +16,7 @@ QClaw is an offline-first AI coding assistant that runs entirely on the Arduino 
 
 ### 1.1 Motivation
 
-Consumer AI assistants require internet access and cloud inference infrastructure. For embedded education contexts — deployments, workstations, field deployments — this creates a hard dependency that fails in offline or restricted-network environments. The Arduino Uno Q, while marketed as an embedded Linux board, carries enough compute (4 × Cortex-A53 @ 2.0 GHz, 4 GB LPDDR4X) to run quantized sub-1B models at interactive speeds.
+Consumer AI assistants require internet access and cloud inference infrastructure. For embedded systems contexts — field deployments, air-gapped lab benches, edge devices, industrial controllers — this creates a hard dependency that fails in offline or restricted-network environments. The Arduino Uno Q, while marketed as an embedded Linux board, carries enough compute (4 × Cortex-A53 @ 2.0 GHz, 4 GB LPDDR4X) to run quantized sub-1B models at interactive speeds.
 
 QClaw's thesis is that the full coding workflow — understand a user's request, write a correct sketch, compile it, flash it to the MCU, and report success — can be executed by a 0.8B quantized model running locally on the board itself. The agent acts as both the LLM orchestrator and the Arduino toolchain driver, with no network dependency after initial setup.
 
@@ -153,12 +153,11 @@ Each run is designed as a controlled experiment that isolates a single variable:
 
 ### 3.2 Models
 
-Two models were evaluated throughout v3:
+The primary production model:
 
 | Model | File | Params | Quant | Size | Decode rate | Role |
 |---|---|---|---|---|---|---|
 | Qwen3.5-0.8B-Q4_0 | `Qwen_Qwen3.5-0.8B-Q4_0.gguf` | 752M | Q4_0 | 490 MB | ~8 tok/s | Primary production model |
-| Qwen3-0.6B-Q4_0 | `Qwen_Qwen3-0.6B-Q4_0.gguf` | ~600M | Q4_0 | 448 MB | ~10 tok/s | Bandwidth-optimal fallback |
 
 Server flags (consistent across all runs): `--ctx-size 8192 --parallel 1 --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800`
 
@@ -363,14 +362,12 @@ Session key `run7-led-matrix-demo3` appeared correctly in `scope_key=` — Phase
 
 ## 6. Benchmark Results (Phase E)
 
-Phase E ran the 2 new capability prompts across both models (4 planned cells; 3 completed).
+Phase E ran the 2 new capability prompts on the 0.8B model.
 
 | Cell | Wall | Iters | arduino upload | Sketch quality | Verdict |
 |---|---|---|---|---|---|
 | 08b/led_matrix | 1168s | 1 | 0 | ✅ canonical template correct | Ambient prompt → markdown only |
 | 08b/compile_blink | 1339s | 2 | 0 | ❌ println repetition loop | Ambient prompt → text, generation failure |
-| 06b/led_matrix | TIMEOUT | 1 attempt | 0 | — | Cold prefill > 1200s × 2 |
-| 06b/compile_blink | not run | — | — | — | — |
 
 ### 6.1 08b/led_matrix
 
@@ -382,18 +379,6 @@ This is the definitive characterization of the ambient-prompt gap: the skill con
 
 Iter 1 called `read_file` on `sketch-patterns/references/blink.md` (the compile/upload pre-router rule fired correctly). Iter 2 produced a sketch response that fell into a `Serial.println` repetition loop — printing the same two status lines dozens of times. This is a known quantized-model failure mode when the prompt contains both a creative task ("write a sketch") and an action directive ("compile and upload") without a clear stopping criterion. No arduino tool call was attempted.
 
-### 6.3 06b/led_matrix — Timeout Finding
-
-The 0.6B server was cold-started for this cell. The first LLM request (cold prefill of the ~20K-char pre-router-expanded system prompt) hit the configured `request_timeout: 1200` (seconds) exactly on the first attempt, then again on the first retry. Root cause:
-
-- Pre-router inlined ~7,262 chars of skill content (from the `led_matrix` rule match)
-- Combined with `SOUL.md` (~9,527 chars) and tool schema (~1,800 chars), total system prompt: ~20,722 chars
-- The 0.6B server cold-starts with an empty KV cache; full prefill of 20K+ chars at ~10 tok/s decode throughput takes over 20 minutes on the first request
-
-The 0.6B ran without timeout in Run 6 because Run 6 used direct curl calls with a shorter system prompt (no pre-router, no inlined skill content). The pre-router's inline expansion is the new variable.
-
-**Mitigation:** Set `request_timeout: 2400` in `config.json` for 0.6B benchmark runs, or pre-warm the server with a short dummy request before each cell to populate the static system-prompt KV cache.
-
 ---
 
 ## 7. Cross-Run Analysis
@@ -402,7 +387,7 @@ The 0.6B ran without timeout in Run 6 because Run 6 used direct curl calls with 
 
 Without the pre-router, the model must call `read_file` to load skill content. At 0.8B scale, a `read_file` call costs a full LLM iteration: ~10-20 minutes of latency on cold context (cold prefill) plus the decode time for the response. The pre-router amortizes this cost to zero additional LLM iterations — the skill content is injected before the first call.
 
-The tradeoff is system prompt size: each pre-router hit adds the content of the matched skill files. The led-matrix rule adds ~7K chars (~1,750 tokens). At 0.8B scale, this is acceptable. At 0.6B scale, it pushes total prompt size past the `request_timeout` threshold.
+The tradeoff is system prompt size: each pre-router hit adds the content of the matched skill files. The led-matrix rule adds ~7K chars (~1,750 tokens). At 0.8B scale, this is acceptable.
 
 ### 7.2 The Prompt Specificity Problem
 
@@ -419,14 +404,7 @@ This is not a skill content problem — the SKILL.md `tool_calls` JSON example i
 
 ### 7.3 The Agent Loop's Role
 
-Run 6 (direct API, no loop, no tools) showed that the 0.6B is robust without the loop — it answers correctly on 4/5 prompts in a single shot. Run 4 (full loop, 9 tools) showed that the 0.8B benefits from the loop's response-format scaffolding but degrades with a large tool surface.
-
-The optimal configuration per model:
-
-| Model | Loop | Pre-router | Tools | Outcome |
-|---|---|---|---|---|
-| 0.8B | ✅ required | ✅ required | 4 (trimmed) | Best quality + tool calls |
-| 0.6B | ⚠️ optional | ✅ required | 0–2 (minimal) | Robust without loop; timeouts with pre-router inline |
+Run 4 (full loop, 9 tools) showed that the 0.8B benefits from the loop's response-format scaffolding but degrades with a large tool surface. The optimal 0.8B configuration is: loop ✅ required, pre-router ✅ required, trimmed tool surface (4 narrow tools at minimum). This yields best sketch quality and reliable tool calls together.
 
 ### 7.4 Generation Failures at 0.8B
 
@@ -501,29 +479,18 @@ Do not describe the steps in a text reply — use the tool.
 
 This should close the gap between directive and ambient prompts for the `led_matrix` and `compile_blink` benchmark cells.
 
-### 9.2 0.6B Request Timeout
-
-Increase `request_timeout` from 1200s to 2400s in `config/qclaw.config.json` when running 0.6B benchmarks, or implement server pre-warming in `eval_v3_run7.sh`:
-
-```bash
-# Pre-warm: send a single-token request to populate static system-prompt KV cache
-curl -s -X POST http://127.0.0.1:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"'$MODEL'","messages":[{"role":"user","content":"hi"}],"max_tokens":1}'
-```
-
-### 9.3 0.8B Repetition Loop Prevention
+### 9.2 0.8B Repetition Loop Prevention
 
 The `compile_blink` repetition loop warrants investigation. Two experiments:
 
 1. **Structured prompt**: "Write only the sketch source code (no prose). After writing the sketch, call the arduino tool with action=upload."
 2. **max_tokens: 512**: Force the model to terminate the sketch quickly, then enter iteration 2 for the tool call.
 
-### 9.4 Ventuno Q GPU/NPU Acceleration (planned)
+### 9.3 Ventuno Q GPU/NPU Acceleration (planned)
 
 The Arduino Ventuno Q (Qualcomm Dragonwing IQ-8275, 8-core Kryo Gen 6 ARMv9, Adreno GPU with Vulkan 1.3 / OpenCL 3.0, Hexagon Tensor Processor NPU at 40 TOPS INT8, 16 GB LPDDR5) introduces two acceleration paths QClaw is forward-compatible with:
 
-- **GPU prefill offload** via llama.cpp's Vulkan or OpenCL backend. The Ventuno Q's Adreno is a generation ahead of the Uno Q's Adreno 702, and LPDDR5 lifts the bandwidth ceiling that dominates decode on the Uno Q today. This directly addresses the cold-prefill timeout observed on the 0.8B and 0.6B models when the pre-router-expanded system prompt exceeds ~20K chars.
+- **GPU prefill offload** via llama.cpp's Vulkan or OpenCL backend. The Ventuno Q's Adreno is a generation ahead of the Uno Q's Adreno 702, and LPDDR5 lifts the bandwidth ceiling that dominates decode on the Uno Q today. This directly addresses cold-prefill latency on the pre-router-expanded ~20K-char system prompt.
 - **NPU decode acceleration** via the Hexagon Tensor Processor. With 40 TOPS INT8 and a QNN/llama.cpp Hexagon backend, the Ventuno Q can support 3B–7B-class models at interactive speed — model scale large enough to close the prompt-specificity gap and the niche-topic quality ceiling observed at 0.8B.
 
 The skills framework, pre-router, 8-tool surface, and arduino tool are forward-compatible — the same agentic/direct paths run unchanged on the Ventuno Q with the model and backend swapped underneath.

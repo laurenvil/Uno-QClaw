@@ -157,7 +157,6 @@ Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `--ctx-size 8192 --parallel 1 --reasonin
 | Metric | Value |
 |---|---|
 | Decode throughput (0.8B Q4_0) | ~8 tok/s |
-| Decode throughput (0.6B Q4_0) | ~10 tok/s |
 | Model RAM (0.8B Q4_0, mlocked) | ~490 MB |
 | KV cache (8192 ctx, q8_0 K+V) | ~120 MB |
 | Total llama-server RSS | ~1.3 GB |

@@ -255,7 +255,7 @@ Result: 8 tools, ~3,400-char schema overhead, no general shell capability. Compa
 
 ### Pre-router KV pressure (still relevant)
 
-Run 7 Phase E showed the 0.6B times out cold-prefilling a ~20K-char system prompt. The Wave 1-3 additions don't change the worst-case prompt size — only the *matched* skills inline content, and no single user message fires all 23 rules. The largest realistic match is the LED-matrix + compile/upload combination (~11K of pre-router content), which is comparable to what Run 7/8 already exercised.
+The Wave 1-3 additions don't change the worst-case prompt size — only the *matched* skills inline content, and no single user message fires all 23 rules. The largest realistic match is the LED-matrix + compile/upload combination (~11K of pre-router content), which is comparable to what Run 7/8 already exercised.
 
 **No mitigation needed at this time.** If a future skill triggers along with the existing largest ones and pushes total prompt past 22-23K chars, the fan-out cap proposed in the gap analysis (cap to ~3 matched skills per message, deduplicate less-specific matches) should ship before that wave.
 

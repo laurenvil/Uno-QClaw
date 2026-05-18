@@ -639,7 +639,7 @@ Earlier QClaw versions registered an `i2c` tool in `pkg/tools/i2c.go` that acces
 |-----------|-------|-----|
 | `model_name` | `qwen-local` | Local llama-server, no cloud |
 | `api_base` | `http://127.0.0.1:8080/v1` | llama-server loopback |
-| `request_timeout` | 1200 | 0.8B agentic; raise to 2400 for 0.6B (cold prefill of 20K-char system prompt exceeds 1200s) |
+| `request_timeout` | 1200 | 0.8B agentic cold prefill of the ~20K-char system prompt fits comfortably |
 | `max_tokens` | 2048 | Bounds max response length; v3 reduced from 4096 |
 | `max_tool_iterations` | 20 | Generous; most workflows finish in 2–5 |
 | `summarize_message_threshold` | 10 | Compress history at 10 messages |

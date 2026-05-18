@@ -57,15 +57,6 @@ wget -O ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
 
 Download once — it does not change.
 
-**Alternative (lower RAM, ~10 tok/s decode ceiling):**
-
-```bash
-wget -O ~/models/Qwen_Qwen3-0.6B-Q4_0.gguf \
-  'https://huggingface.co/Qwen/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_0.gguf'
-```
-
-**0.6B caveat:** Agentic Phase E established that the 0.6B's cold prefill of the pre-router-expanded ~20K-char system prompt exceeds the default `request_timeout: 1200` (seconds). If you use 0.6B, raise `request_timeout` to `2400` in `~/.picoclaw/config.json` or pre-warm the server with a dummy request before the first real prompt.
-
 ---
 
 ## Step 4: Install Everything
@@ -131,12 +122,12 @@ The arduino tool invokes `arduino-cli compile --fqbn arduino:zephyr:unoq` then f
 
 ```
   ┌───────────────────────────────────────────┐
-  │  🧘  S  E  N  S  A  I                    │
+  │  🧘  Q  C  L  A  W                        │
   │      Arduino AI Assistant                  │
   │                                            │
   │  Type your question at 'You:' and press    │
-  │  Enter. QClaw responds in a few seconds.  │
-  │  Type 'exit' or Ctrl+C to quit.           │
+  │  Enter. QClaw responds in a few seconds.   │
+  │  Type 'exit' or Ctrl+C to quit.            │
   └───────────────────────────────────────────┘
 
 You: Use the arduino tool to upload a blink sketch for D9 to the board.
@@ -154,7 +145,7 @@ Starts llama-server and drops into a Python REPL that POSTs directly to the Open
 
 ```
   ┌───────────────────────────────────────────────┐
-  │  🧘  S E N S A I — Direct Server               │
+  │  🧘  Q C L A W — Direct Server                 │
   │      Arduino Q&A Assistant (fast path)         │
   │                                                │
   │  Pre-router + direct API · no tools · no loop  │
@@ -264,7 +255,6 @@ Users can then SSH in and run `make qclaw-agentic` or `make qclaw-direct` — ll
 
 - Confirm `/no_think` is the first line of `~/.picoclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120s
 - Check RAM: `free -h` — llama-server needs ~1.3 GB free
-- Try the smaller model: `Qwen3-0.6B-Q4_0.gguf` (~340 MB, ~2× faster)
 
 **Sketch compilation fails**
 

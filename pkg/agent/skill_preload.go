@@ -14,7 +14,7 @@ import (
 // (and optional reference files inside that skill) that should be auto-injected
 // into the system prompt for the current turn.
 //
-// Rationale: Qwen3-0.8B / 0.6B running locally do not reliably emit the
+// Rationale: Qwen3-0.8B running locally does not reliably emit the
 // read_file tool call even when SOUL.md and the skill description tell them to.
 // The agent loop already has the skill text on disk; matching keywords in the
 // user message lets us pre-load the right SKILL.md + reference file so the
