@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test
+.PHONY: all build install uninstall clean help test qclaw qclaw-agentic qclaw-direct qclaw-install qclaw-setup qclaw-stop qclaw-onboard qclaw-tui qclaw-arduino-setup
 
 # Build variables
 BINARY_NAME=picoclaw
@@ -8,23 +8,57 @@ MAIN_GO=$(CMD_DIR)/main.go
 
 # Version
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT=$(shell git rev-parse --short=8 HEAD 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date +%FT%T%z)
-LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
+GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
+CONFIG_PKG=github.com/sipeed/picoclaw/pkg/config
+LDFLAGS=-ldflags "-X $(CONFIG_PKG).Version=$(VERSION) -X $(CONFIG_PKG).GitCommit=$(GIT_COMMIT) -X $(CONFIG_PKG).BuildTime=$(BUILD_TIME) -X $(CONFIG_PKG).GoVersion=$(GO_VERSION) -s -w"
 
 # Go variables
-GO?=go
-GOFLAGS?=-v
+GO?=CGO_ENABLED=0 go
+GOFLAGS?=-v -tags stdjson
+
+# Patch MIPS LE ELF e_flags (offset 36) for NaN2008-only kernels (e.g. Ingenic X2600).
+#
+# Bytes (octal): \004 \024 \000 \160  →  little-endian 0x70001404
+#   0x70000000  EF_MIPS_ARCH_32R2   MIPS32 Release 2
+#   0x00001000  EF_MIPS_ABI_O32     O32 ABI
+#   0x00000400  EF_MIPS_NAN2008     IEEE 754-2008 NaN encoding
+#   0x00000004  EF_MIPS_CPIC        PIC calling sequence
+#
+# Go's GOMIPS=softfloat emits no FP instructions, so the NaN mode is irrelevant
+# at runtime — this is purely an ELF metadata fix to satisfy the kernel's check.
+# patchelf cannot modify e_flags; dd at a fixed offset is the most portable way.
+#
+# Ref: https://codebrowser.dev/linux/linux/arch/mips/include/asm/elf.h.html
+define PATCH_MIPS_FLAGS
+	@if [ -f "$(1)" ]; then \
+		printf '\004\024\000\160' | dd of=$(1) bs=1 seek=36 count=4 conv=notrunc 2>/dev/null || \
+		{ echo "Error: failed to patch MIPS e_flags for $(1)"; exit 1; }; \
+	else \
+		echo "Error: $(1) not found, cannot patch MIPS e_flags"; exit 1; \
+	fi
+endef
+
+# Golangci-lint
+GOLANGCI_LINT?=golangci-lint
 
 # Installation
 INSTALL_PREFIX?=$(HOME)/.local
 INSTALL_BIN_DIR=$(INSTALL_PREFIX)/bin
 INSTALL_MAN_DIR=$(INSTALL_PREFIX)/share/man/man1
+INSTALL_TMP_SUFFIX=.new
 
 # Workspace and Skills
 PICOCLAW_HOME?=$(HOME)/.picoclaw
 WORKSPACE_DIR?=$(PICOCLAW_HOME)/workspace
 WORKSPACE_SKILLS_DIR=$(WORKSPACE_DIR)/skills
 BUILTIN_SKILLS_DIR=$(CURDIR)/skills
+
+# QClaw / llama-server
+LLAMA_SERVER?=$(CURDIR)/yzma/lib/llama-server
+LLAMA_PORT?=8080
+QCLAW_MODEL?=$(HOME)/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf
 
 # OS detection
 UNAME_S:=$(shell uname -s)
@@ -37,8 +71,14 @@ ifeq ($(UNAME_S),Linux)
 		ARCH=amd64
 	else ifeq ($(UNAME_M),aarch64)
 		ARCH=arm64
+	else ifeq ($(UNAME_M),armv81)
+		ARCH=arm64
+	else ifeq ($(UNAME_M),loongarch64)
+		ARCH=loong64
 	else ifeq ($(UNAME_M),riscv64)
 		ARCH=riscv64
+	else ifeq ($(UNAME_M),mipsel)
+		ARCH=mipsle
 	else
 		ARCH=$(UNAME_M)
 	endif
@@ -61,60 +101,194 @@ BINARY_PATH=$(BUILD_DIR)/$(BINARY_NAME)-$(PLATFORM)-$(ARCH)
 # Default target
 all: build
 
+## generate: Run generate
+generate:
+	@echo "Run generate..."
+	@rm -r ./$(CMD_DIR)/workspace 2>/dev/null || true
+	@$(GO) generate ./...
+	@echo "Run generate complete"
+
 ## build: Build the picoclaw binary for current platform
-build:
+build: generate
 	@echo "Building $(BINARY_NAME) for $(PLATFORM)/$(ARCH)..."
 	@mkdir -p $(BUILD_DIR)
-	$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_PATH) ./$(CMD_DIR)
+	@$(GO) build $(GOFLAGS) $(LDFLAGS) -o $(BINARY_PATH) ./$(CMD_DIR)
 	@echo "Build complete: $(BINARY_PATH)"
 	@ln -sf $(BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(BINARY_NAME)
 
+## build-launcher: Build the picoclaw-launcher (web console) binary
+build-launcher:
+	@echo "Building picoclaw-launcher for $(PLATFORM)/$(ARCH)..."
+	@mkdir -p $(BUILD_DIR)
+	@if [ ! -f web/backend/dist/index.html ]; then \
+		echo "Building frontend..."; \
+		cd web/frontend && pnpm install && pnpm build:backend; \
+	fi
+	@$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/picoclaw-launcher-$(PLATFORM)-$(ARCH) ./web/backend
+	@ln -sf picoclaw-launcher-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/picoclaw-launcher
+	@echo "Build complete: $(BUILD_DIR)/picoclaw-launcher"
+
+## build-whatsapp-native: Build with WhatsApp native (whatsmeow) support; larger binary
+build-whatsapp-native: generate
+## @echo "Building $(BINARY_NAME) with WhatsApp native for $(PLATFORM)/$(ARCH)..."
+	@echo "Building for multiple platforms..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=amd64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=arm GOARM=7 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm ./$(CMD_DIR)
+	GOOS=linux GOARCH=arm64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=loong64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-loong64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=riscv64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=mipsle GOMIPS=softfloat $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle ./$(CMD_DIR)
+	$(call PATCH_MIPS_FLAGS,$(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle)
+	GOOS=darwin GOARCH=arm64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
+	GOOS=windows GOARCH=amd64 $(GO) build -tags whatsapp_native $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+## @$(GO) build $(GOFLAGS) -tags whatsapp_native $(LDFLAGS) -o $(BINARY_PATH) ./$(CMD_DIR)
+	@echo "Build complete"
+##	@ln -sf $(BINARY_NAME)-$(PLATFORM)-$(ARCH) $(BUILD_DIR)/$(BINARY_NAME)
+
+## build-linux-arm: Build for Linux ARMv7 (e.g. Raspberry Pi Zero 2 W 32-bit)
+build-linux-arm: generate
+	@echo "Building for linux/arm (GOARM=7)..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=arm GOARM=7 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm ./$(CMD_DIR)
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-arm"
+
+## build-linux-arm64: Build for Linux ARM64 (e.g. Raspberry Pi Zero 2 W 64-bit)
+build-linux-arm64: generate
+	@echo "Building for linux/arm64..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64"
+
+## build-linux-mipsle: Build for Linux MIPS32 LE
+build-linux-mipsle: generate
+	@echo "Building for linux/mipsle (softfloat)..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=mipsle GOMIPS=softfloat $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle ./$(CMD_DIR)
+	$(call PATCH_MIPS_FLAGS,$(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle)
+	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle"
+
+## build-pi-zero: Build for Raspberry Pi Zero 2 W (32-bit and 64-bit)
+build-pi-zero: build-linux-arm build-linux-arm64
+	@echo "Pi Zero 2 W builds: $(BUILD_DIR)/$(BINARY_NAME)-linux-arm (32-bit), $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 (64-bit)"
+
 ## build-all: Build picoclaw for all platforms
-build-all:
+build-all: generate
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
 	GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=arm GOARM=7 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm ./$(CMD_DIR)
 	GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=loong64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-loong64 ./$(CMD_DIR)
 	GOOS=linux GOARCH=riscv64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-riscv64 ./$(CMD_DIR)
-# 	GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./$(CMD_DIR)
+	GOOS=linux GOARCH=mipsle GOMIPS=softfloat $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle ./$(CMD_DIR)
+	$(call PATCH_MIPS_FLAGS,$(BUILD_DIR)/$(BINARY_NAME)-linux-mipsle)
+	GOOS=linux GOARCH=arm GOARM=7 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-armv7 ./$(CMD_DIR)
+	GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./$(CMD_DIR)
 	GOOS=windows GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./$(CMD_DIR)
+	GOOS=netbsd GOARCH=amd64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-netbsd-amd64 ./$(CMD_DIR)
+	GOOS=netbsd GOARCH=arm64 $(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-netbsd-arm64 ./$(CMD_DIR)
 	@echo "All builds complete"
+
+## qclaw-install: One-time setup: build binary, bootstrap workspace, install arduino-cli, run onboarding
+qclaw-install: build qclaw-setup qclaw-arduino-setup qclaw-onboard
+
+## qclaw-arduino-setup: Install arduino-cli and the Arduino Uno Q board core
+qclaw-arduino-setup:
+	@chmod +x scripts/arduino-cli-setup.sh
+	@scripts/arduino-cli-setup.sh
+
+## qclaw-onboard: Interactive setup — checks model/server, configures Telegram token
+qclaw-onboard:
+	@chmod +x scripts/qclaw-onboard.sh
+	@PICOCLAW_HOME=$(PICOCLAW_HOME) \
+	 QCLAW_MODEL=$(QCLAW_MODEL) \
+	 LLAMA_SERVER=$(LLAMA_SERVER) \
+	 scripts/qclaw-onboard.sh
+
+## qclaw-setup: Install QClaw workspace files and config (safe to re-run)
+qclaw-setup:
+	@echo "Setting up QClaw workspace..."
+	@mkdir -p $(WORKSPACE_DIR)
+	@cp workspace/SOUL.md $(WORKSPACE_DIR)/SOUL.md
+	@echo "  Installed: $(WORKSPACE_DIR)/SOUL.md"
+	@cp workspace/IDENTITY.md $(WORKSPACE_DIR)/IDENTITY.md
+	@echo "  Installed: $(WORKSPACE_DIR)/IDENTITY.md"
+	@mkdir -p $(WORKSPACE_DIR)/skills
+	@cp -r workspace/skills/. $(WORKSPACE_DIR)/skills/
+	@echo "  Installed: $(WORKSPACE_DIR)/skills/"
+	@if [ ! -f $(PICOCLAW_HOME)/config.json ]; then \
+		cp config/qclaw.config.json $(PICOCLAW_HOME)/config.json; \
+		echo "  Installed: $(PICOCLAW_HOME)/config.json"; \
+	else \
+		echo "  Skipped:   $(PICOCLAW_HOME)/config.json (already exists — edit manually to update)"; \
+	fi
+	@echo "  Workspace ready: $(WORKSPACE_DIR)"
+
+## qclaw: Default QClaw launcher — alias for `qclaw-agentic` (full agent loop + 8 tools + arduino compile/upload).
+qclaw: qclaw-agentic
+
+## qclaw-agentic: Agentic architecture — agent loop + 23-rule pre-router + 8 tools.
+##                 Tools: read_file, write_file, list_dir, arduino, camera, sysfs_led, network, i2cdetect.
+##                 Pre-router covers 15 skills: sketch-patterns, led-matrix, uno-q-hardware, bridge,
+##                 wireless, vision, audio, arduino-app-lab, modulino, linux-led (+ inherited).
+##                 Use for compile/upload, camera capture, GPIO, networking. ~12–22 min per cell on 0.8B.
+qclaw-agentic:
+	@chmod +x scripts/qclaw-launch.sh
+	@PICOCLAW_HOME=$(PICOCLAW_HOME) \
+	 QCLAW_MODEL=$(QCLAW_MODEL) \
+	 LLAMA_SERVER=$(LLAMA_SERVER) \
+	 BINARY=$(BUILD_DIR)/$(BINARY_NAME) \
+	 LLAMA_PORT=$(LLAMA_PORT) \
+	 scripts/qclaw-launch.sh
+
+## qclaw-direct: Direct architecture — 23-rule pre-router + direct API, NO agent loop, NO tools.
+##                Pre-router inlines the same 15 skills as the agentic path; without tools the model
+##                returns sketches as text and cannot capture images, set LEDs, or scan I²C.
+##                ~5–13 min per cell on 0.8B (33% faster than agentic). Best for Q&A and short sketches.
+qclaw-direct:
+	@chmod +x scripts/qclaw-launch-direct.sh
+	@PICOCLAW_HOME=$(PICOCLAW_HOME) \
+	 QCLAW_MODEL=$(QCLAW_MODEL) \
+	 LLAMA_SERVER=$(LLAMA_SERVER) \
+	 LLAMA_PORT=$(LLAMA_PORT) \
+	 scripts/qclaw-launch-direct.sh
+
+## qclaw-tui: Build and launch the picoclaw launcher TUI (for advanced channel config)
+qclaw-tui:
+	@echo "Building picoclaw-launcher-tui..."
+	@mkdir -p $(BUILD_DIR)
+	@$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/picoclaw-launcher-tui ./cmd/picoclaw-launcher-tui
+	@echo "Launching QClaw TUI..."
+	@$(BUILD_DIR)/picoclaw-launcher-tui
+
+## qclaw-stop: Stop background llama-server and gateway processes
+qclaw-stop:
+	@if [ -f $(PICOCLAW_HOME)/llama-server.pid ]; then \
+		kill $$(cat $(PICOCLAW_HOME)/llama-server.pid) 2>/dev/null || true; \
+		rm -f $(PICOCLAW_HOME)/llama-server.pid; \
+		echo "Stopped llama-server"; \
+	else \
+		echo "llama-server not running (no PID file)"; \
+	fi
+	@if [ -f $(PICOCLAW_HOME)/gateway.pid ]; then \
+		kill $$(cat $(PICOCLAW_HOME)/gateway.pid) 2>/dev/null || true; \
+		rm -f $(PICOCLAW_HOME)/gateway.pid; \
+		echo "Stopped gateway"; \
+	else \
+		echo "Gateway not running (no PID file)"; \
+	fi
 
 ## install: Install picoclaw to system and copy builtin skills
 install: build
 	@echo "Installing $(BINARY_NAME)..."
 	@mkdir -p $(INSTALL_BIN_DIR)
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
-	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)
+	# Copy binary with temporary suffix to ensure atomic update
+	@cp $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_BIN_DIR)/$(BINARY_NAME)$(INSTALL_TMP_SUFFIX)
+	@chmod +x $(INSTALL_BIN_DIR)/$(BINARY_NAME)$(INSTALL_TMP_SUFFIX)
+	@mv -f $(INSTALL_BIN_DIR)/$(BINARY_NAME)$(INSTALL_TMP_SUFFIX) $(INSTALL_BIN_DIR)/$(BINARY_NAME)
 	@echo "Installed binary to $(INSTALL_BIN_DIR)/$(BINARY_NAME)"
-	@echo "Installing builtin skills to $(WORKSPACE_SKILLS_DIR)..."
-	@mkdir -p $(WORKSPACE_SKILLS_DIR)
-	@for skill in $(BUILTIN_SKILLS_DIR)/*/; do \
-		if [ -d "$$skill" ]; then \
-			skill_name=$$(basename "$$skill"); \
-			if [ -f "$$skill/SKILL.md" ]; then \
-				cp -r "$$skill" $(WORKSPACE_SKILLS_DIR); \
-				echo "  ✓ Installed skill: $$skill_name"; \
-			fi; \
-		fi; \
-	done
 	@echo "Installation complete!"
-
-## install-skills: Install builtin skills to workspace
-install-skills:
-	@echo "Installing builtin skills to $(WORKSPACE_SKILLS_DIR)..."
-	@mkdir -p $(WORKSPACE_SKILLS_DIR)
-	@for skill in $(BUILTIN_SKILLS_DIR)/*/; do \
-		if [ -d "$$skill" ]; then \
-			skill_name=$$(basename "$$skill"); \
-			if [ -f "$$skill/SKILL.md" ]; then \
-				mkdir -p $(WORKSPACE_SKILLS_DIR)/$$skill_name; \
-				cp -r "$$skill" $(WORKSPACE_SKILLS_DIR); \
-				echo "  ✓ Installed skill: $$skill_name"; \
-			fi; \
-		fi; \
-	done
-	@echo "Skills installation complete!"
 
 ## uninstall: Remove picoclaw from system
 uninstall:
@@ -137,18 +311,80 @@ clean:
 	@rm -rf $(BUILD_DIR)
 	@echo "Clean complete"
 
+## vet: Run go vet for static analysis
+vet: generate
+	@$(GO) vet ./...
+
+## test: Test Go code
+test: generate
+	@$(GO) test ./...
+
 ## fmt: Format Go code
 fmt:
-	@$(GO) fmt ./...
+	@$(GOLANGCI_LINT) fmt
 
-## deps: Update dependencies
+## lint: Run linters
+lint:
+	@$(GOLANGCI_LINT) run
+
+## fix: Fix linting issues
+fix:
+	@$(GOLANGCI_LINT) run --fix
+
+## deps: Download dependencies
 deps:
+	@$(GO) mod download
+	@$(GO) mod verify
+
+## update-deps: Update dependencies
+update-deps:
 	@$(GO) get -u ./...
 	@$(GO) mod tidy
+
+## check: Run vet, fmt, and verify dependencies
+check: deps fmt vet test
 
 ## run: Build and run picoclaw
 run: build
 	@$(BUILD_DIR)/$(BINARY_NAME) $(ARGS)
+
+## docker-build: Build Docker image (minimal Alpine-based)
+docker-build:
+	@echo "Building minimal Docker image (Alpine-based)..."
+	docker compose -f docker/docker-compose.yml build picoclaw-agent picoclaw-gateway
+
+## docker-build-full: Build Docker image with full MCP support (Node.js 24)
+docker-build-full:
+	@echo "Building full-featured Docker image (Node.js 24)..."
+	docker compose -f docker/docker-compose.full.yml build picoclaw-agent picoclaw-gateway
+
+## docker-test: Test MCP tools in Docker container
+docker-test:
+	@echo "Testing MCP tools in Docker..."
+	@chmod +x scripts/test-docker-mcp.sh
+	@./scripts/test-docker-mcp.sh
+
+## docker-run: Run picoclaw gateway in Docker (Alpine-based)
+docker-run:
+	docker compose -f docker/docker-compose.yml --profile gateway up
+
+## docker-run-full: Run picoclaw gateway in Docker (full-featured)
+docker-run-full:
+	docker compose -f docker/docker-compose.full.yml --profile gateway up
+
+## docker-run-agent: Run picoclaw agent in Docker (interactive, Alpine-based)
+docker-run-agent:
+	docker compose -f docker/docker-compose.yml run --rm picoclaw-agent
+
+## docker-run-agent-full: Run picoclaw agent in Docker (interactive, full-featured)
+docker-run-agent-full:
+	docker compose -f docker/docker-compose.full.yml run --rm picoclaw-agent
+
+## docker-clean: Clean Docker images and volumes
+docker-clean:
+	docker compose -f docker/docker-compose.yml down -v
+	docker compose -f docker/docker-compose.full.yml down -v
+	docker rmi picoclaw:latest picoclaw:full 2>/dev/null || true
 
 ## help: Show this help message
 help:
@@ -158,17 +394,18 @@ help:
 	@echo "  make [target]"
 	@echo ""
 	@echo "Targets:"
-	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'
+	@grep -E '^## ' $(MAKEFILE_LIST) | sort | awk -F': ' '{printf "  %-16s %s\n", substr($$1, 4), $$2}'
 	@echo ""
 	@echo "Examples:"
 	@echo "  make build              # Build for current platform"
-	@echo "  make install            # Install to /usr/local/bin"
-	@echo "  make install-user       # Install to ~/.local/bin"
+	@echo "  make install            # Install to ~/.local/bin"
 	@echo "  make uninstall          # Remove from /usr/local/bin"
 	@echo "  make install-skills     # Install skills to workspace"
+	@echo "  make docker-build       # Build minimal Docker image"
+	@echo "  make docker-test        # Test MCP tools in Docker"
 	@echo ""
 	@echo "Environment Variables:"
-	@echo "  INSTALL_PREFIX          # Installation prefix (default: /usr/local)"
+	@echo "  INSTALL_PREFIX          # Installation prefix (default: ~/.local)"
 	@echo "  WORKSPACE_DIR           # Workspace directory (default: ~/.picoclaw/workspace)"
 	@echo "  VERSION                 # Version string (default: git describe)"
 	@echo ""

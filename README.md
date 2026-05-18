@@ -1,428 +1,274 @@
-<div align="center">
-<img src="assets/logo.jpg" alt="PicoClaw" width="512">
+# QClaw
 
-<h1>PicoClaw: Ultra-Efficient AI Assistant in Go</h1>
+**QClaw** is an on-device agentic AI assistant for the Arduino Uno Q. It writes, compiles, and uploads Arduino sketches; captures camera frames; drives Linux-side LEDs; reports network state; and scans I²C buses — all running entirely on the board. No internet. No API keys. No cloud.
 
-<h3>$10 Hardware · 10MB RAM · 1s Boot · 皮皮虾，我们走！</h3>
-<h3></h3>
+Built on [picoclaw](https://github.com/sipeed/picoclaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
 
-<p>
-<img src="https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go&logoColor=white" alt="Go">
-<img src="https://img.shields.io/badge/Arch-x86__64%2C%20ARM64%2C%20RISC--V-blue" alt="Hardware">
-<img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-</p>
+QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
 
-</div>
-
+- **Agentic** — agent loop + 23-rule pre-router + 8 tools. End-to-end compile/flash, camera capture, MPU LED control, network diagnostics, I²C bus scan.
+- **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills.
 
 ---
 
-🦐 PicoClaw is an ultra-lightweight personal AI Assistant inspired by [nanobot](https://github.com/HKUDS/nanobot), refactored from the ground up in Go through a self-bootstrapping process, where the AI agent itself drove the entire architectural migration and code optimization.
+## What QClaw Does
 
-⚡️ Runs on $10 hardware with <10MB RAM: That's 99% less memory than OpenClaw and 98% cheaper than a Mac mini!
-
-<table align="center">
-  <tr align="center">
-    <td align="center" valign="top">
-      <p align="center">
-        <img src="assets/picoclaw_mem.gif" width="360" height="240">
-      </p>
-    </td>
-    <td align="center" valign="top">
-      <p align="center">
-        <img src="assets/licheervnano.png" width="400" height="240">
-      </p>
-    </td>
-  </tr>
-</table>
-
-## 📢 News
-2026-02-09 🎉 PicoClaw Launched! Built in 1 day to bring AI Agents to $10 hardware with <10MB RAM. 🦐 皮皮虾，我们走！
-
-## ✨ Features
-
-🪶 **Ultra-Lightweight**: <10MB Memory footprint — 99% smaller than Clawdbot - core functionality.
-
-💰 **Minimal Cost**: Efficient enough to run on $10 Hardware — 98% cheaper than a Mac mini.
-
-⚡️ **Lightning Fast**: 400X Faster startup time, boot in 1 second even in 0.6GHz single core.
-
-🌍 **True Portability**: Single self-contained binary across RISC-V, ARM, and x86, One-click to Go!
-
-🤖 **AI-Bootstrapped**: Autonomous Go-native implementation — 95% Agent-generated core with human-in-the-loop refinement.
-
-|  | OpenClaw  | NanoBot | **PicoClaw** |
-| --- | --- | --- |--- |
-| **Language** | TypeScript | Python | **Go** |
-| **RAM** | >1GB |>100MB| **< 10MB** |
-| **Startup**</br>(0.8GHz core) | >500s | >30s |  **<1s** |
-| **Cost** | Mac Mini 599$ | Most Linux SBC </br>~50$ |**Any Linux Board**</br>**As low as 10$** |
-<img src="assets/compare.jpg" alt="PicoClaw" width="512">
-
-
-## 🦾 Demonstration
-### 🛠️ Standard Assistant Workflows
-<table align="center">
-  <tr align="center">
-    <th><p align="center">🧩 Full-Stack Engineer</p></th>
-    <th><p align="center">🗂️ Logging & Planning Management</p></th>
-    <th><p align="center">🔎 Web Search & Learning</p></th>
-  </tr>
-  <tr>
-    <td align="center"><p align="center"><img src="assets/picoclaw_code.gif" width="240" height="180"></p></td>
-    <td align="center"><p align="center"><img src="assets/picoclaw_memory.gif" width="240" height="180"></p></td>
-    <td align="center"><p align="center"><img src="assets/picoclaw_search.gif" width="240" height="180"></p></td>
-  </tr>
-  <tr>
-    <td align="center">Develop • Deploy • Scale</td>
-    <td align="center">Schedule • Automate • Memory</td>
-    <td align="center">Discovery • Insights • Trends</td>
-  </tr>
-</table>
-
-### 🐜 Innovative Low-Footprint Deploy
-1. Minimal 10$ Home Assitant
-2. NanoKVM Automated Maintenance
-3. MaixCAM2 Smart Monitoring
-
-https://private-user-images.githubusercontent.com/83055338/547056448-e7b031ff-d6f5-4468-bcca-5726b6fecb5c.mp4
-
-🌟 More Deployment Cases Await！
-
-## 📦 Install
-
-### Install with precompiled binary
-
-Download the firmware for your platform from the [release](https://github.com/sipeed/picoclaw/releases) page.
-
-### Install from source (latest features, recommended for development)
-
-```bash
-git clone https://github.com/sipeed/picoclaw.git
-
-cd picoclaw
-make deps
-
-# Build, no need to install
-make build
-
-# Build for multiple platforms
-make build-all
-
-# Build And Install
-make install
-```
-
-### 🚀 Quick Start
-
-> [!TIP]
-> Set your API key in `~/.picoclaw/config.json`.
-> Get API keys: [OpenRouter](https://openrouter.ai/keys) (LLM) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) (LLM)
-> Web search is **optional** - get free [Brave Search API](https://brave.com/search/api) (2000 free queries/month)
-
-**1. Initialize**
-
-```bash
-picoclaw onboard
-```
-
-**2. Configure** (`~/.picoclaw/config.json`)
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "workspace": "~/.picoclaw/workspace",
-      "model": "glm-4.7",
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "max_tool_iterations": 20
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "api_key": "xxx",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4"
-    }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "api_key": "YOUR_BRAVE_API_KEY",
-        "max_results": 5
-      }
-    }
-  }
-}
-```
-
-**3. Get API Keys**
-
-- **LLM Provider**: [OpenRouter](https://openrouter.ai/keys) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) · [Anthropic](https://console.anthropic.com) · [OpenAI](https://platform.openai.com) · [Gemini](https://aistudio.google.com/api-keys)
-- **Web Search** (optional): [Brave Search](https://brave.com/search/api) - Free tier available (2000 requests/month)
-
-> **Note**: See `config.example.json` for a complete configuration template.
-
-**3. Chat**
-
-```bash
-picoclaw agent -m "What is 2+2?"
-```
-
-That's it! You have a working AI assistant in 2 minutes.
+| Capability | Path | How |
+|---|---|---|
+| Generate Arduino sketches | Both | LLM text generation with pre-router-inlined canonical templates |
+| Compile sketches | Agentic | `arduino` tool → `arduino-cli compile --fqbn arduino:zephyr:unoq` |
+| Upload sketches to the MCU | Agentic | `arduino` tool → OpenOCD flash at `0x8100000` via linuxgpiod (no SSH, no network) |
+| Detect connected boards | Agentic | `arduino` tool → `arduino-cli board list` |
+| Capture camera frames | Agentic | `camera` tool → GStreamer V4L2 single-frame pipeline |
+| Drive MPU RGB LEDs | Agentic | `sysfs_led` tool → `/sys/class/leds/*/brightness` with active-low inversion |
+| Report network state | Agentic | `network` tool → hostname, interfaces, default gateway (read-only) |
+| Scan Linux I²C buses | Agentic | `i2cdetect` tool → list `/dev/i2c-*`, `i2cdetect -y -r <bus>` |
+| Read/write workspace files | Agentic | `read_file`, `write_file`, `list_dir` |
+| Answer hardware questions | Both | Pre-router inlines the relevant skill content (15 skills covered) |
+| Telegram, terminal, SSH | Agentic | picoclaw channel adapters |
+| Fully offline | Both | All inference, compilation, and flashing runs locally on the QRB2210 |
 
 ---
 
-## 💬 Chat Apps
-
-Talk to your picoclaw through Telegram
-
-| Channel | Setup |
-|---------|-------|
-| **Telegram** | Easy (just a token) |
-| **Discord** | Easy (bot token + intents) |
-
-<details>
-<summary><b>Telegram</b> (Recommended)</summary>
-
-**1. Create a bot**
-
-- Open Telegram, search `@BotFather`
-- Send `/newbot`, follow prompts
-- Copy the token
-
-**2. Configure**
-
-```json
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
-```
-
-> Get your user ID from `@userinfobot` on Telegram.
-
-**3. Run**
+## Quick Start
 
 ```bash
-picoclaw gateway
-```
-</details>
+git clone https://github.com/laurenvil/UnoQClaw.git ~/ArduinoApps/QClaw
+cd ~/ArduinoApps/QClaw
+git submodule update --init --recursive
 
+# Download the inference engine
+cd yzma && make download-llama.cpp && cd ..
 
-<details>
-<summary><b>Discord</b></summary>
+# Download the model (~490 MB for Q4_0)
+mkdir -p ~/models
+wget -O ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
+  'https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf'
 
-**1. Create a bot**
-- Go to https://discord.com/developers/applications
-- Create an application → Bot → Add Bot
-- Copy the bot token
+# Build, install arduino-cli, configure (one time)
+make qclaw-install
 
-**2. Enable intents**
-- In the Bot settings, enable **MESSAGE CONTENT INTENT**
-- (Optional) Enable **SERVER MEMBERS INTENT** if you plan to use allow lists based on member data
-
-**3. Get your User ID**
-- Discord Settings → Advanced → enable **Developer Mode**
-- Right-click your avatar → **Copy User ID**
-
-**4. Configure**
-
-```json
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
+# Start a session — pick a path
+make qclaw-agentic    # full agent loop + 8 tools (compile/upload/camera/sysfs_led/network/i2cdetect)
+make qclaw-direct     # pre-router + direct API (fast Q&A, no tools)
 ```
 
-**5. Invite the bot**
-- OAuth2 → URL Generator
-- Scopes: `bot`
-- Bot Permissions: `Send Messages`, `Read Message History`
-- Open the generated invite URL and add the bot to your server
-
-**6. Run**
-
-```bash
-nanobot gateway
-```
-
-</details>
-
-## ⚙️ Configuration
-
-Config file: `~/.picoclaw/config.json`
-
-### Providers
-
-> [!NOTE]
-> Groq provides free voice transcription via Whisper. If configured, Telegram voice messages will be automatically transcribed.
-
-| Provider | Purpose | Get API Key |
-|----------|---------|-------------|
-| `gemini` | LLM (Gemini direct) | [aistudio.google.com](https://aistudio.google.com) |
-| `zhipu` | LLM (Zhipu direct) | [bigmodel.cn](bigmodel.cn) |
-| `openrouter(To be tested)` | LLM (recommended, access to all models) | [openrouter.ai](https://openrouter.ai) |
-| `anthropic(To be tested)` | LLM (Claude direct) | [console.anthropic.com](https://console.anthropic.com) |
-| `openai(To be tested)` | LLM (GPT direct) | [platform.openai.com](https://platform.openai.com) |
-| `deepseek(To be tested)` | LLM (DeepSeek direct) | [platform.deepseek.com](https://platform.deepseek.com) |
-| `groq(To be tested)` | LLM + **Voice transcription** (Whisper) | [console.groq.com](https://console.groq.com) |
-
-
-<details>
-<summary><b>Zhipu</b></summary>
-
-**1. Get API key and base URL**
-- Get [API key](https://bigmodel.cn/usercenter/proj-mgmt/apikeys)
-
-**2. Configure**
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "workspace": "~/.picoclaw/workspace",
-      "model": "glm-4.7",
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "max_tool_iterations": 20
-    }
-  },
-  "providers": {
-    "zhipu": {
-      "api_key": "Your API Key",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4"
-    },
-  },
-}
-```
-
-**3. Run**
-
-```bash
-picoclaw agent -m "Hello"
-```
-</details>
-
-<details>
-<summary><b>Full config example</b></summary>
-
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-opus-4-5"
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
-    },
-    "groq": {
-      "apiKey": "gsk_xxx"
-    }
-  },
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "123456:ABC...",
-      "allowFrom": ["123456789"]
-    },
-    "discord": {
-      "enabled": true,
-      "token": "",
-      "allow_from": [""]
-    },
-    "whatsapp": {
-      "enabled": false
-    },
-    "feishu": {
-      "enabled": false,
-      "appId": "cli_xxx",
-      "appSecret": "xxx",
-      "encryptKey": "",
-      "verificationToken": "",
-      "allowFrom": []
-    }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "apiKey": "BSA..."
-      }
-    }
-  }
-}
-```
-
-</details>
-
-## CLI Reference
-
-| Command | Description |
-|---------|-------------|
-| `picoclaw onboard` | Initialize config & workspace |
-| `picoclaw agent -m "..."` | Chat with the agent |
-| `picoclaw agent` | Interactive chat mode |
-| `picoclaw gateway` | Start the gateway |
-| `picoclaw status` | Show status |
-
-## 🤝 Contribute & Roadmap
-
-PRs welcome! The codebase is intentionally small and readable. 🤗
-
-discord:  https://discord.gg/V4sAZ9XWpN
-
-<img src="assets/wechat.png" alt="PicoClaw" width="512">
-
-
-## 🐛 Troubleshooting
-
-### Web search says "API 配置问题"
-
-This is normal if you haven't configured a search API key yet. PicoClaw will provide helpful links for manual searching.
-
-To enable web search:
-1. Get a free API key at [https://brave.com/search/api](https://brave.com/search/api) (2000 free queries/month)
-2. Add to `~/.picoclaw/config.json`:
-   ```json
-   {
-     "tools": {
-       "web": {
-         "search": {
-           "api_key": "YOUR_BRAVE_API_KEY",
-           "max_results": 5
-         }
-       }
-     }
-   }
-   ```
-
-### Getting content filtering errors
-
-Some providers (like Zhipu) have content filtering. Try rephrasing your query or use a different model.
-
-### Telegram bot says "Conflict: terminated by other getUpdates"
-
-This happens when another instance of the bot is running. Make sure only one `picoclaw gateway` is running at a time.
+`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`.
 
 ---
 
-## 📝 API Key Comparison
+## Two Execution Paths
 
-| Service | Free Tier | Use Case |
-|---------|-----------|-----------|
-| **OpenRouter** | 200K tokens/month | Multiple models (Claude, GPT-4, etc.) |
-| **Zhipu** | 200K tokens/month | Best for Chinese users |
-| **Brave Search** | 2000 queries/month | Web search functionality |
-| **Groq** | Free tier available | Fast inference (Llama, Mixtral) |
+Both paths share the same llama-server backend, the same `SOUL.md`, and the same 23-rule pre-router. They differ only in what surrounds the LLM call.
+
+| Aspect | `make qclaw-agentic` | `make qclaw-direct` |
+|---|---|---|
+| Agent loop (multi-iteration) | ✅ | ❌ (single call) |
+| Tools available | **8** | None |
+| Pre-router | ✅ (23 rules, 15 skills) | ✅ (same 23 rules) |
+| Compile sketches | ✅ | ❌ (text-only) |
+| Upload to board | ✅ flashes STM32U585 at `0x8100000` via OpenOCD | ❌ |
+| Camera frame capture | ✅ via `camera` tool | ❌ |
+| MPU LED control | ✅ via `sysfs_led` tool | ❌ |
+| Network introspection | ✅ via `network` tool | ❌ |
+| I²C bus scan | ✅ via `i2cdetect` tool | ❌ |
+| Telegram gateway | ✅ | ❌ (terminal only) |
+| Best for | Hardware actions, multi-step workflows | Fast factual Q&A across all 15 skills |
+
+The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. The pre-router alone is necessary but not sufficient for harder prompts at 0.8B scale.
+
+---
+
+## Hardware Target
+
+### Arduino Uno Q (primary)
+- **SoC**: Qualcomm Dragonwing QRB2210
+- **CPU**: 4× Cortex-A53 @ 2.0 GHz (ARMv8.0)
+- **GPU**: Adreno 702 @ 845 MHz — OpenCL 2.0
+- **RAM**: 4 GB LPDDR4X
+- **OS**: Debian Linux, kernel 6.16
+- **MCU**: STM32U585 (Zephyr RTOS + Arduino Core) — where sketches run
+
+### Arduino Ventuno Q (upcoming)
+- **SoC**: Qualcomm Dragonwing IQ-8275
+- **CPU**: 8-core Kryo Gen 6 (ARMv9)
+- **NPU**: Hexagon Tensor Processor, 40 TOPS INT8
+- **RAM**: 16 GB LPDDR5
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    QClaw (this repo)                          │
+│                                                                │
+│  Agentic path                                                  │
+│  ┌────────────────────────────────────────────────────┐       │
+│  │ picoclaw agent / gateway (Go)                       │       │
+│  │   ├── channels/  (Telegram, terminal, SSH, ...)     │       │
+│  │   ├── pre-router (skill_preload.go, 23 rules)       │       │
+│  │   ├── agent loop (multi-iter, tool dispatch)        │       │
+│  │   └── tools (8):                                    │       │
+│  │       • read_file / write_file / list_dir           │       │
+│  │       • arduino   → arduino-cli + OpenOCD@0x8100000 │       │
+│  │       • camera    → gst-launch-1.0 v4l2src ! ...    │       │
+│  │       • sysfs_led → /sys/class/leds/*/brightness    │       │
+│  │       • network   → /proc/net/route + interfaces    │       │
+│  │       • i2cdetect → /dev/i2c-* + i2cdetect -y -r    │       │
+│  └────────────────────────────────────────────────────┘       │
+│                                                                │
+│  Direct path                                                   │
+│  ┌────────────────────────────────────────────────────┐       │
+│  │ qclaw-direct-chat.py (terminal REPL)                │       │
+│  │   ├── pre-router (same 23 rules, Python port)       │       │
+│  │   └── single LLM call · no tools · no loop          │       │
+│  └────────────────────────────────────────────────────┘       │
+│                                                                │
+│                       │ HTTP loopback :8080                    │
+│  llama-server  ◄──────┘                                        │
+│    └── yzma/  (submodule, llama.cpp FFI)                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The pre-router (`pkg/agent/skill_preload.go`, mirrored for the direct path in `scripts/qclaw-direct-chat.py`) scans the user message against 23 keyword regex rules spanning 15 skills. Each match inlines the corresponding `SKILL.md` and reference files into the system prompt before the LLM call — the model never has to call `read_file` for known skill content.
+
+| Domain | Skills | Sample triggers |
+|---|---|---|
+| Sketch fundamentals | `sketch-patterns` | `breathe`, `blink`, `button`, `analogRead`, `servo`, `compile`, `upload`, `CAN bus`, `DAC`, `OPAMP` |
+| LED matrix | `led-matrix` | `matrix`, `scroll`, `Arduino_LED_Matrix` |
+| Hardware reference | `uno-q-hardware` | `pin`, `5V`, `voltage`, `JDIGITAL`, `Qwiic`, `USB-C`, `VIN` |
+| Dual-chip workflow | `bridge`, `arduino-app-lab` | `Bridge`, `Python + sketch`, `App Lab`, `Brick` |
+| Linux-side capabilities | `wireless`, `vision`, `audio`, `linux-led` | `Wi-Fi`, `Bluetooth`, `camera`, `OpenCV`, `microphone`, `red:user` |
+| Plug-and-play sensors | `modulino` | `Modulino`, `ModulinoDistance` |
+
+The `arduino` tool compiles via `arduino-cli`, then flashes via OpenOCD directly to the STM32U585 sketch partition at `0x8100000`. (The pre-installed `arduino-flash` wrapper hardcodes `0x80F0000`, which lands in a reserved area near the end of bank 1 and never executes — see `docs/QClaw/eval/whitepaper.md` for the root-cause analysis.)
+
+Everything runs locally over `127.0.0.1:8080`.
+
+---
+
+## Benchmarks (Arduino Uno Q)
+
+Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `--ctx-size 8192 --parallel 1 --reasoning-budget 800` · `/no_think` active · t=0.3. Walltimes are full end-to-end (cold prefill + decode) on a fresh server.
+
+### Throughput & resource footprint
+
+| Metric | Value |
+|---|---|
+| Decode throughput (0.8B Q4_0) | ~8 tok/s |
+| Decode throughput (0.6B Q4_0) | ~10 tok/s |
+| Model RAM (0.8B Q4_0, mlocked) | ~490 MB |
+| KV cache (8192 ctx, q8_0 K+V) | ~120 MB |
+| Total llama-server RSS | ~1.3 GB |
+| Boot-to-ready (cold model load) | ~6 s |
+| Time to first token (warm KV) | ~1 s |
+| Time to first token (cold prefill, 20K-char prompt) | ~25 s |
+
+### Per-prompt walltime — Agentic vs Direct
+
+| Prompt | Direct | Agentic | Direct quality | Agentic quality |
+|---|---|---|---|---|
+| Factual ("which pins do PWM?") | ~7.4 min | ~7 min | ✅ correct | ✅ correct |
+| Concept ("MPU vs MCU?") | ~5.5 min | ~8 min | ✅ correct | ✅ correct |
+| Voltage safety ("5V on A0?") | ~9.5 min | ~10 min | ✅ correct | ✅ correct |
+| Short sketch (blink) | ~6 min | ~10 min | ✅ correct | ✅ correct |
+| Full sketch (breathe) | ~11 min | ~13 min | ✅ correct | ✅ correct |
+| Sketch + compile + flash (LED matrix) | ~13 min | ~20 min | ❌ text only | ✅ flashes board |
+
+Direct is ~33% faster on pure factual prompts; agentic is required for any prompt that ends in a hardware action.
+
+### Token economy
+
+| Configuration | System prompt size | Tool schema | Per-turn cost |
+|---|---|---|---|
+| Direct | ~9.5K SOUL + ~7K pre-router | none | ~16K chars |
+| Agentic | ~9.5K SOUL + ~7K pre-router + ~3.4K tool schema | 8 tools | ~20K chars |
+
+### Adreno 702 OpenCL prefill acceleration (planned)
+
+| Phase | CPU-only | OpenCL | Gain |
+|---|---|---|---|
+| Prefill TTFT (cold) | ~28 s | ~4–9 s | 5–13× |
+| Decode tok/s | ~8–12 | ~8–12 | No change* |
+
+*Decode is memory-bandwidth-bound; GPU shares the same LPDDR4X bus.
+
+---
+
+## Make Targets
+
+| Command | What it does |
+|---|---|
+| `make qclaw` | Default — alias for `make qclaw-agentic` |
+| `make qclaw-agentic` | Agentic path: agent loop + 23-rule pre-router + 8 tools |
+| `make qclaw-direct` | Direct path: pre-router + single LLM call, no tools |
+| `make qclaw-install` | Full first-time setup (build + workspace + arduino-cli + wizard) |
+| `make qclaw-onboard` | Re-run setup wizard (Telegram token, allow list) |
+| `make qclaw-setup` | Reinstall system prompt + skills tree after a git pull |
+| `make qclaw-arduino-setup` | Install or update arduino-cli and the Uno Q board core |
+| `make qclaw-stop` | Stop background processes |
+| `make build` | Build the picoclaw binary for current platform |
+| `make build-linux-arm64` | Cross-compile for Uno Q (ARM64) |
+
+---
+
+## Repository Layout
+
+```
+UnoQClaw/
+├── cmd/picoclaw/             # CLI entry point (Cobra)
+├── pkg/
+│   ├── agent/                # Agent loop, context, pre-router, tool dispatch
+│   ├── channels/             # Telegram, terminal, IRC, Matrix, ...
+│   ├── providers/            # LLM provider adapters (OpenAI-compat, Anthropic, ...)
+│   └── tools/                # arduino, camera, sysfs_led, network, i2cdetect, filesystem
+├── yzma/                     # Submodule → hybridgroup/yzma (llama.cpp FFI)
+├── config/qclaw.config.json  # Runtime config template
+├── workspace/
+│   ├── SOUL.md               # System prompt / agent persona
+│   ├── IDENTITY.md           # Identity file
+│   └── skills/               # Pre-router-loaded skill bundles (15 skills)
+├── scripts/
+│   ├── qclaw-launch.sh        # Agentic launcher
+│   ├── qclaw-launch-direct.sh # Direct launcher
+│   ├── qclaw-direct-chat.py   # Direct-path Python REPL
+│   ├── qclaw-onboard.sh       # Setup wizard
+│   └── arduino-cli-setup.sh   # arduino-cli + arduino:zephyr installer
+├── assets/qclaw-logo.svg
+├── docs/QClaw/               # Technical references (see below)
+└── Makefile
+```
+
+---
+
+## Docs
+
+| Document | Description |
+|---|---|
+| `docs/QClaw/development/setup-walkthrough.md` | Step-by-step from a fresh Uno Q to a running QClaw |
+| `docs/QClaw/development/architecture-study-bible.md` | Dual-processor architecture, pin tables, voltage rules, data paths |
+| `docs/QClaw/development/UnoQ-datasheet.pdf` | Official Arduino Uno Q hardware datasheet |
+| `docs/QClaw/eval/whitepaper.md` | Architecture and evaluation whitepaper |
+| `docs/QClaw/eval/capability-integration.md` | Skill, reference, and tool integration record |
+| `docs/QClaw/eval/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
+
+---
+
+## Upstream & Submodule
+
+```bash
+# Sync with upstream picoclaw
+git fetch upstream
+git merge upstream/main
+
+# Update yzma submodule
+git submodule update --remote yzma
+git add yzma && git commit -m "chore: update yzma submodule"
+```
+
+---
+
+## License
+
+picoclaw: MIT · yzma: Apache-2.0

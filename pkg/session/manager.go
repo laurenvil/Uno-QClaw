@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,7 +32,7 @@ func NewSessionManager(storage string) *SessionManager {
 	}
 
 	if storage != "" {
-		os.MkdirAll(storage, 0755)
+		os.MkdirAll(storage, 0o700)
 		sm.loadSessions()
 	}
 
@@ -39,26 +40,35 @@ func NewSessionManager(storage string) *SessionManager {
 }
 
 func (sm *SessionManager) GetOrCreate(key string) *Session {
-	sm.mu.RLock()
-	session, ok := sm.sessions[key]
-	sm.mu.RUnlock()
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
 
-	if !ok {
-		sm.mu.Lock()
-		session = &Session{
-			Key:      key,
-			Messages: []providers.Message{},
-			Created:  time.Now(),
-			Updated:  time.Now(),
-		}
-		sm.sessions[key] = session
-		sm.mu.Unlock()
+	session, ok := sm.sessions[key]
+	if ok {
+		return session
 	}
+
+	session = &Session{
+		Key:      key,
+		Messages: []providers.Message{},
+		Created:  time.Now(),
+		Updated:  time.Now(),
+	}
+	sm.sessions[key] = session
 
 	return session
 }
 
 func (sm *SessionManager) AddMessage(sessionKey, role, content string) {
+	sm.AddFullMessage(sessionKey, providers.Message{
+		Role:    role,
+		Content: content,
+	})
+}
+
+// AddFullMessage adds a complete message with tool calls and tool call ID to the session.
+// This is used to save the full conversation flow including tool calls and tool results.
+func (sm *SessionManager) AddFullMessage(sessionKey string, msg providers.Message) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -72,10 +82,7 @@ func (sm *SessionManager) AddMessage(sessionKey, role, content string) {
 		sm.sessions[sessionKey] = session
 	}
 
-	session.Messages = append(session.Messages, providers.Message{
-		Role:    role,
-		Content: content,
-	})
+	session.Messages = append(session.Messages, msg)
 	session.Updated = time.Now()
 }
 
@@ -124,6 +131,12 @@ func (sm *SessionManager) TruncateHistory(key string, keepLast int) {
 		return
 	}
 
+	if keepLast <= 0 {
+		session.Messages = []providers.Message{}
+		session.Updated = time.Now()
+		return
+	}
+
 	if len(session.Messages) <= keepLast {
 		return
 	}
@@ -132,22 +145,94 @@ func (sm *SessionManager) TruncateHistory(key string, keepLast int) {
 	session.Updated = time.Now()
 }
 
-func (sm *SessionManager) Save(session *Session) error {
+// sanitizeFilename converts a session key into a cross-platform safe filename.
+// Replaces ':' with '_' (session key separator) and '/' and '\' with '_' so
+// composite IDs (e.g. Telegram forum "chatID/threadID") do not create
+// subdirectories or break on Windows. The original key is preserved inside
+// the JSON file, so loadSessions still maps back to the right in-memory key.
+func sanitizeFilename(key string) string {
+	s := strings.ReplaceAll(key, ":", "_")
+	s = strings.ReplaceAll(s, "/", "_")
+	s = strings.ReplaceAll(s, "\\", "_")
+	return s
+}
+
+func (sm *SessionManager) Save(key string) error {
 	if sm.storage == "" {
 		return nil
 	}
 
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	filename := sanitizeFilename(key)
 
-	sessionPath := filepath.Join(sm.storage, session.Key+".json")
+	// filepath.IsLocal rejects empty names, "..", absolute paths, and
+	// OS-reserved device names (NUL, COM1 … on Windows). sanitizeFilename
+	// already replaced '/' and '\' with '_', so no subdirs are created.
+	if filename == "." || !filepath.IsLocal(filename) {
+		return os.ErrInvalid
+	}
 
-	data, err := json.MarshalIndent(session, "", "  ")
+	// Snapshot under read lock, then perform slow file I/O after unlock.
+	sm.mu.RLock()
+	stored, ok := sm.sessions[key]
+	if !ok {
+		sm.mu.RUnlock()
+		return nil
+	}
+
+	snapshot := Session{
+		Key:     stored.Key,
+		Summary: stored.Summary,
+		Created: stored.Created,
+		Updated: stored.Updated,
+	}
+	if len(stored.Messages) > 0 {
+		snapshot.Messages = make([]providers.Message, len(stored.Messages))
+		copy(snapshot.Messages, stored.Messages)
+	} else {
+		snapshot.Messages = []providers.Message{}
+	}
+	sm.mu.RUnlock()
+
+	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(sessionPath, data, 0644)
+	sessionPath := filepath.Join(sm.storage, filename+".json")
+	tmpFile, err := os.CreateTemp(sm.storage, "session-*.tmp")
+	if err != nil {
+		return err
+	}
+
+	tmpPath := tmpFile.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Chmod(0o600); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Sync(); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, sessionPath); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
 
 func (sm *SessionManager) loadSessions() error {
@@ -180,4 +265,26 @@ func (sm *SessionManager) loadSessions() error {
 	}
 
 	return nil
+}
+
+// Close is a no-op for the in-memory SessionManager; it satisfies the
+// SessionStore interface so callers can release resources uniformly.
+func (sm *SessionManager) Close() error {
+	return nil
+}
+
+// SetHistory updates the messages of a session.
+func (sm *SessionManager) SetHistory(key string, history []providers.Message) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[key]
+	if ok {
+		// Create a deep copy to strictly isolate internal state
+		// from the caller's slice.
+		msgs := make([]providers.Message, len(history))
+		copy(msgs, history)
+		session.Messages = msgs
+		session.Updated = time.Now()
+	}
 }

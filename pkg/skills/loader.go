@@ -2,24 +2,32 @@ package skills
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/ast"
+	"github.com/gomarkdown/markdown/parser"
+	"gopkg.in/yaml.v3"
+
+	"github.com/sipeed/picoclaw/pkg/logger"
+)
+
+var namePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
+
+const (
+	MaxNameLength        = 64
+	MaxDescriptionLength = 1024
 )
 
 type SkillMetadata struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Always      bool               `json:"always"`
-	Requires    *SkillRequirements `json:"requires,omitempty"`
-}
-
-type SkillRequirements struct {
-	Bins []string `json:"bins"`
-	Env  []string `json:"env"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 type SkillInfo struct {
@@ -27,108 +35,120 @@ type SkillInfo struct {
 	Path        string `json:"path"`
 	Source      string `json:"source"`
 	Description string `json:"description"`
-	Available   bool   `json:"available"`
-	Missing     string `json:"missing,omitempty"`
+}
+
+func (info SkillInfo) validate() error {
+	var errs error
+	if info.Name == "" {
+		errs = errors.Join(errs, errors.New("name is required"))
+	} else {
+		if len(info.Name) > MaxNameLength {
+			errs = errors.Join(errs, fmt.Errorf("name exceeds %d characters", MaxNameLength))
+		}
+		if !namePattern.MatchString(info.Name) {
+			errs = errors.Join(errs, errors.New("name must be alphanumeric with hyphens"))
+		}
+	}
+
+	if info.Description == "" {
+		errs = errors.Join(errs, errors.New("description is required"))
+	} else if len(info.Description) > MaxDescriptionLength {
+		errs = errors.Join(errs, fmt.Errorf("description exceeds %d character", MaxDescriptionLength))
+	}
+	return errs
 }
 
 type SkillsLoader struct {
 	workspace       string
-	workspaceSkills string
-	builtinSkills   string
+	workspaceSkills string // workspace skills (project-level)
+	globalSkills    string // global skills (~/.picoclaw/skills)
+	builtinSkills   string // builtin skills
 }
 
-func NewSkillsLoader(workspace string, builtinSkills string) *SkillsLoader {
+// SkillRoots returns all unique skill root directories used by this loader.
+// The order follows resolution priority: workspace > global > builtin.
+func (sl *SkillsLoader) SkillRoots() []string {
+	roots := []string{sl.workspaceSkills, sl.globalSkills, sl.builtinSkills}
+	seen := make(map[string]struct{}, len(roots))
+	out := make([]string, 0, len(roots))
+
+	for _, root := range roots {
+		trimmed := strings.TrimSpace(root)
+		if trimmed == "" {
+			continue
+		}
+		clean := filepath.Clean(trimmed)
+		if _, ok := seen[clean]; ok {
+			continue
+		}
+		seen[clean] = struct{}{}
+		out = append(out, clean)
+	}
+
+	return out
+}
+
+func NewSkillsLoader(workspace string, globalSkills string, builtinSkills string) *SkillsLoader {
 	return &SkillsLoader{
 		workspace:       workspace,
 		workspaceSkills: filepath.Join(workspace, "skills"),
+		globalSkills:    globalSkills, // ~/.picoclaw/skills
 		builtinSkills:   builtinSkills,
 	}
 }
 
-func (sl *SkillsLoader) ListSkills(filterUnavailable bool) []SkillInfo {
+func (sl *SkillsLoader) ListSkills() []SkillInfo {
 	skills := make([]SkillInfo, 0)
+	seen := make(map[string]bool)
 
-	if sl.workspaceSkills != "" {
-		if dirs, err := os.ReadDir(sl.workspaceSkills); err == nil {
-			for _, dir := range dirs {
-				if dir.IsDir() {
-					skillFile := filepath.Join(sl.workspaceSkills, dir.Name(), "SKILL.md")
-					if _, err := os.Stat(skillFile); err == nil {
-						info := SkillInfo{
-							Name:   dir.Name(),
-							Path:   skillFile,
-							Source: "workspace",
-						}
-						metadata := sl.getSkillMetadata(skillFile)
-						if metadata != nil {
-							info.Description = metadata.Description
-							info.Available = sl.checkRequirements(metadata.Requires)
-							if !info.Available {
-								info.Missing = sl.getMissingRequirements(metadata.Requires)
-							}
-						} else {
-							info.Available = true
-						}
-						skills = append(skills, info)
-					}
-				}
+	addSkills := func(dir, source string) {
+		if dir == "" {
+			return
+		}
+		dirs, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, d := range dirs {
+			if !d.IsDir() {
+				continue
 			}
+			skillFile := filepath.Join(dir, d.Name(), "SKILL.md")
+			if _, err := os.Stat(skillFile); err != nil {
+				continue
+			}
+			info := SkillInfo{
+				Name:   d.Name(),
+				Path:   skillFile,
+				Source: source,
+			}
+			metadata := sl.getSkillMetadata(skillFile)
+			if metadata != nil {
+				info.Description = metadata.Description
+				info.Name = metadata.Name
+			}
+			if err := info.validate(); err != nil {
+				slog.Warn("invalid skill from "+source, "name", info.Name, "error", err)
+				continue
+			}
+			if seen[info.Name] {
+				continue
+			}
+			seen[info.Name] = true
+			skills = append(skills, info)
 		}
 	}
 
-	if sl.builtinSkills != "" {
-		if dirs, err := os.ReadDir(sl.builtinSkills); err == nil {
-			for _, dir := range dirs {
-				if dir.IsDir() {
-					skillFile := filepath.Join(sl.builtinSkills, dir.Name(), "SKILL.md")
-					if _, err := os.Stat(skillFile); err == nil {
-						exists := false
-						for _, s := range skills {
-							if s.Name == dir.Name() && s.Source == "workspace" {
-								exists = true
-								break
-							}
-						}
-						if exists {
-							continue
-						}
-
-						info := SkillInfo{
-							Name:   dir.Name(),
-							Path:   skillFile,
-							Source: "builtin",
-						}
-						metadata := sl.getSkillMetadata(skillFile)
-						if metadata != nil {
-							info.Description = metadata.Description
-							info.Available = sl.checkRequirements(metadata.Requires)
-							if !info.Available {
-								info.Missing = sl.getMissingRequirements(metadata.Requires)
-							}
-						} else {
-							info.Available = true
-						}
-						skills = append(skills, info)
-					}
-				}
-			}
-		}
-	}
-
-	if filterUnavailable {
-		filtered := make([]SkillInfo, 0)
-		for _, s := range skills {
-			if s.Available {
-				filtered = append(filtered, s)
-			}
-		}
-		return filtered
-	}
+	// Priority: workspace > global > builtin
+	addSkills(sl.workspaceSkills, "workspace")
+	addSkills(sl.globalSkills, "global")
+	addSkills(sl.builtinSkills, "builtin")
 
 	return skills
 }
 
 func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
+	// 1. load from workspace skills first (project-level)
 	if sl.workspaceSkills != "" {
 		skillFile := filepath.Join(sl.workspaceSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -136,6 +156,15 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		}
 	}
 
+	// 2. then load from global skills (~/.picoclaw/skills)
+	if sl.globalSkills != "" {
+		skillFile := filepath.Join(sl.globalSkills, name, "SKILL.md")
+		if content, err := os.ReadFile(skillFile); err == nil {
+			return sl.stripFrontmatter(string(content)), true
+		}
+	}
+
+	// 3. finally load from builtin skills
 	if sl.builtinSkills != "" {
 		skillFile := filepath.Join(sl.builtinSkills, name, "SKILL.md")
 		if content, err := os.ReadFile(skillFile); err == nil {
@@ -143,6 +172,30 @@ func (sl *SkillsLoader) LoadSkill(name string) (string, bool) {
 		}
 	}
 
+	return "", false
+}
+
+// LoadReference loads a reference file under a skill's references/ directory.
+// Resolution priority matches LoadSkill: workspace > global > builtin.
+// refName must be a plain filename (no slashes, no ".." traversal).
+func (sl *SkillsLoader) LoadReference(skillName, refName string) (string, bool) {
+	if !namePattern.MatchString(skillName) {
+		return "", false
+	}
+	if refName == "" || strings.ContainsAny(refName, `/\`) || strings.Contains(refName, "..") {
+		return "", false
+	}
+
+	roots := []string{sl.workspaceSkills, sl.globalSkills, sl.builtinSkills}
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		p := filepath.Join(root, skillName, "references", refName)
+		if content, err := os.ReadFile(p); err == nil {
+			return string(content), true
+		}
+	}
 	return "", false
 }
 
@@ -163,7 +216,7 @@ func (sl *SkillsLoader) LoadSkillsForContext(skillNames []string) string {
 }
 
 func (sl *SkillsLoader) BuildSkillsSummary() string {
-	allSkills := sl.ListSkills(false)
+	allSkills := sl.ListSkills()
 	if len(allSkills) == 0 {
 		return ""
 	}
@@ -175,21 +228,11 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 		escapedDesc := escapeXML(s.Description)
 		escapedPath := escapeXML(s.Path)
 
-		available := "true"
-		if !s.Available {
-			available = "false"
-		}
-
-		lines = append(lines, fmt.Sprintf("  <skill available=\"%s\">", available))
+		lines = append(lines, fmt.Sprintf("  <skill>"))
 		lines = append(lines, fmt.Sprintf("    <name>%s</name>", escapedName))
 		lines = append(lines, fmt.Sprintf("    <description>%s</description>", escapedDesc))
 		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapedPath))
-
-		if !s.Available && s.Missing != "" {
-			escapedMissing := escapeXML(s.Missing)
-			lines = append(lines, fmt.Sprintf("    <requires>%s</requires>", escapedMissing))
-		}
-
+		lines = append(lines, fmt.Sprintf("    <source>%s</source>", s.Source))
 		lines = append(lines, "  </skill>")
 	}
 	lines = append(lines, "</skills>")
@@ -197,105 +240,166 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 	return strings.Join(lines, "\n")
 }
 
-func (sl *SkillsLoader) GetAlwaysSkills() []string {
-	skills := sl.ListSkills(true)
-	var always []string
-	for _, s := range skills {
-		metadata := sl.getSkillMetadata(s.Path)
-		if metadata != nil && metadata.Always {
-			always = append(always, s.Name)
-		}
-	}
-	return always
-}
-
 func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 	content, err := os.ReadFile(skillPath)
 	if err != nil {
+		logger.WarnCF("skills", "Failed to read skill metadata",
+			map[string]any{
+				"skill_path": skillPath,
+				"error":      err.Error(),
+			})
 		return nil
 	}
 
-	frontmatter := sl.extractFrontmatter(string(content))
+	frontmatter, bodyContent := splitFrontmatter(string(content))
+	dirName := filepath.Base(filepath.Dir(skillPath))
+	title, bodyDescription := extractMarkdownMetadata(bodyContent)
+
+	metadata := &SkillMetadata{
+		Name:        dirName,
+		Description: bodyDescription,
+	}
+	if title != "" && namePattern.MatchString(title) && len(title) <= MaxNameLength {
+		metadata.Name = title
+	}
+
 	if frontmatter == "" {
-		return &SkillMetadata{
-			Name: filepath.Base(filepath.Dir(skillPath)),
+		return metadata
+	}
+
+	// Try JSON first (for backward compatibility)
+	var jsonMeta struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(frontmatter), &jsonMeta); err == nil {
+		if jsonMeta.Name != "" {
+			metadata.Name = jsonMeta.Name
 		}
+		if jsonMeta.Description != "" {
+			metadata.Description = jsonMeta.Description
+		}
+		return metadata
 	}
 
-	var metadata struct {
-		Name        string             `json:"name"`
-		Description string             `json:"description"`
-		Always      bool               `json:"always"`
-		Requires    *SkillRequirements `json:"requires"`
+	// Fall back to simple YAML parsing
+	yamlMeta := sl.parseSimpleYAML(frontmatter)
+	if name := yamlMeta["name"]; name != "" {
+		metadata.Name = name
+	}
+	if description := yamlMeta["description"]; description != "" {
+		metadata.Description = description
+	}
+	return metadata
+}
+
+func extractMarkdownMetadata(content string) (title, description string) {
+	p := parser.NewWithExtensions(parser.CommonExtensions)
+	doc := markdown.Parse([]byte(content), p)
+	if doc == nil {
+		return "", ""
 	}
 
-	if err := json.Unmarshal([]byte(frontmatter), &metadata); err != nil {
-		return nil
+	ast.WalkFunc(doc, func(node ast.Node, entering bool) ast.WalkStatus {
+		if !entering {
+			return ast.GoToNext
+		}
+
+		switch n := node.(type) {
+		case *ast.Heading:
+			if title == "" && n.Level == 1 {
+				title = nodeText(n)
+				if title != "" && description != "" {
+					return ast.Terminate
+				}
+			}
+		case *ast.Paragraph:
+			if description == "" {
+				description = nodeText(n)
+				if title != "" && description != "" {
+					return ast.Terminate
+				}
+			}
+		}
+		return ast.GoToNext
+	})
+
+	return title, description
+}
+
+func nodeText(n ast.Node) string {
+	var b strings.Builder
+	ast.WalkFunc(n, func(node ast.Node, entering bool) ast.WalkStatus {
+		if !entering {
+			return ast.GoToNext
+		}
+
+		switch t := node.(type) {
+		case *ast.Text:
+			b.Write(t.Literal)
+		case *ast.Code:
+			b.Write(t.Literal)
+		case *ast.Softbreak, *ast.Hardbreak, *ast.NonBlockingSpace:
+			b.WriteByte(' ')
+		}
+		return ast.GoToNext
+	})
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// parseSimpleYAML parses YAML frontmatter and extracts known metadata fields.
+func (sl *SkillsLoader) parseSimpleYAML(content string) map[string]string {
+	result := make(map[string]string)
+
+	var meta struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
+	}
+	if err := yaml.Unmarshal([]byte(content), &meta); err != nil {
+		return result
+	}
+	if meta.Name != "" {
+		result["name"] = meta.Name
+	}
+	if meta.Description != "" {
+		result["description"] = meta.Description
 	}
 
-	return &SkillMetadata{
-		Name:        metadata.Name,
-		Description: metadata.Description,
-		Always:      metadata.Always,
-		Requires:    metadata.Requires,
-	}
+	return result
 }
 
 func (sl *SkillsLoader) extractFrontmatter(content string) string {
-	re := regexp.MustCompile(`^---\n(.*?)\n---`)
-	match := re.FindStringSubmatch(content)
-	if len(match) > 1 {
-		return match[1]
-	}
-	return ""
+	frontmatter, _ := splitFrontmatter(content)
+	return frontmatter
 }
 
 func (sl *SkillsLoader) stripFrontmatter(content string) string {
-	re := regexp.MustCompile(`^---\n.*?\n---\n`)
-	return re.ReplaceAllString(content, "")
+	_, body := splitFrontmatter(content)
+	return body
 }
 
-func (sl *SkillsLoader) checkRequirements(requires *SkillRequirements) bool {
-	if requires == nil {
-		return true
+func splitFrontmatter(content string) (frontmatter, body string) {
+	normalized := string(parser.NormalizeNewlines([]byte(content)))
+	lines := strings.Split(normalized, "\n")
+	if len(lines) == 0 || lines[0] != "---" {
+		return "", content
 	}
 
-	for _, bin := range requires.Bins {
-		if _, err := exec.LookPath(bin); err != nil {
-			continue
-		} else {
-			return true
+	end := -1
+	for i := 1; i < len(lines); i++ {
+		if lines[i] == "---" {
+			end = i
+			break
 		}
 	}
-
-	for _, env := range requires.Env {
-		if os.Getenv(env) == "" {
-			return false
-		}
+	if end == -1 {
+		return "", content
 	}
 
-	return true
-}
-
-func (sl *SkillsLoader) getMissingRequirements(requires *SkillRequirements) string {
-	if requires == nil {
-		return ""
-	}
-
-	var missing []string
-	for _, bin := range requires.Bins {
-		if _, err := exec.LookPath(bin); err != nil {
-			missing = append(missing, fmt.Sprintf("CLI: %s", bin))
-		}
-	}
-
-	for _, env := range requires.Env {
-		if os.Getenv(env) == "" {
-			missing = append(missing, fmt.Sprintf("ENV: %s", env))
-		}
-	}
-
-	return strings.Join(missing, ", ")
+	frontmatter = strings.Join(lines[1:end], "\n")
+	body = strings.Join(lines[end+1:], "\n")
+	body = strings.TrimLeft(body, "\n")
+	return frontmatter, body
 }
 
 func escapeXML(s string) string {

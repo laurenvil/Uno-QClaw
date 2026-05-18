@@ -2,16 +2,26 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"regexp"
 	"strings"
 )
 
-type EditFileTool struct{}
+// EditFileTool edits a file by replacing old_text with new_text.
+// The old_text must exist exactly in the file.
+type EditFileTool struct {
+	fs fileSystem
+}
 
-func NewEditFileTool() *EditFileTool {
-	return &EditFileTool{}
+// NewEditFileTool creates a new EditFileTool with optional directory restriction.
+func NewEditFileTool(workspace string, restrict bool, allowPaths ...[]*regexp.Regexp) *EditFileTool {
+	var patterns []*regexp.Regexp
+	if len(allowPaths) > 0 {
+		patterns = allowPaths[0]
+	}
+	return &EditFileTool{fs: buildFs(workspace, restrict, patterns)}
 }
 
 func (t *EditFileTool) Name() string {
@@ -22,19 +32,19 @@ func (t *EditFileTool) Description() string {
 	return "Edit a file by replacing old_text with new_text. The old_text must exist exactly in the file."
 }
 
-func (t *EditFileTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
+func (t *EditFileTool) Parameters() map[string]any {
+	return map[string]any{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"path": map[string]interface{}{
+		"properties": map[string]any{
+			"path": map[string]any{
 				"type":        "string",
 				"description": "The file path to edit",
 			},
-			"old_text": map[string]interface{}{
+			"old_text": map[string]any{
 				"type":        "string",
 				"description": "The exact text to find and replace",
 			},
-			"new_text": map[string]interface{}{
+			"new_text": map[string]any{
 				"type":        "string",
 				"description": "The text to replace with",
 			},
@@ -43,57 +53,38 @@ func (t *EditFileTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *EditFileTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
 	path, ok := args["path"].(string)
 	if !ok {
-		return "", fmt.Errorf("path is required")
+		return ErrorResult("path is required")
 	}
 
 	oldText, ok := args["old_text"].(string)
 	if !ok {
-		return "", fmt.Errorf("old_text is required")
+		return ErrorResult("old_text is required")
 	}
 
 	newText, ok := args["new_text"].(string)
 	if !ok {
-		return "", fmt.Errorf("new_text is required")
+		return ErrorResult("new_text is required")
 	}
 
-	filePath := filepath.Clean(path)
-
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("file not found: %s", path)
+	if err := editFile(t.fs, path, oldText, newText); err != nil {
+		return ErrorResult(err.Error())
 	}
-
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
-	}
-
-	contentStr := string(content)
-
-	if !strings.Contains(contentStr, oldText) {
-		return "", fmt.Errorf("old_text not found in file. Make sure it matches exactly")
-	}
-
-	count := strings.Count(contentStr, oldText)
-	if count > 1 {
-		return "", fmt.Errorf("old_text appears %d times. Please provide more context to make it unique", count)
-	}
-
-	newContent := strings.Replace(contentStr, oldText, newText, 1)
-
-	if err := os.WriteFile(filePath, []byte(newContent), 0644); err != nil {
-		return "", fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return fmt.Sprintf("Successfully edited %s", path), nil
+	return SilentResult(fmt.Sprintf("File edited: %s", path))
 }
 
-type AppendFileTool struct{}
+type AppendFileTool struct {
+	fs fileSystem
+}
 
-func NewAppendFileTool() *AppendFileTool {
-	return &AppendFileTool{}
+func NewAppendFileTool(workspace string, restrict bool, allowPaths ...[]*regexp.Regexp) *AppendFileTool {
+	var patterns []*regexp.Regexp
+	if len(allowPaths) > 0 {
+		patterns = allowPaths[0]
+	}
+	return &AppendFileTool{fs: buildFs(workspace, restrict, patterns)}
 }
 
 func (t *AppendFileTool) Name() string {
@@ -104,15 +95,15 @@ func (t *AppendFileTool) Description() string {
 	return "Append content to the end of a file"
 }
 
-func (t *AppendFileTool) Parameters() map[string]interface{} {
-	return map[string]interface{}{
+func (t *AppendFileTool) Parameters() map[string]any {
+	return map[string]any{
 		"type": "object",
-		"properties": map[string]interface{}{
-			"path": map[string]interface{}{
+		"properties": map[string]any{
+			"path": map[string]any{
 				"type":        "string",
 				"description": "The file path to append to",
 			},
-			"content": map[string]interface{}{
+			"content": map[string]any{
 				"type":        "string",
 				"description": "The content to append",
 			},
@@ -121,28 +112,63 @@ func (t *AppendFileTool) Parameters() map[string]interface{} {
 	}
 }
 
-func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{}) (string, error) {
+func (t *AppendFileTool) Execute(ctx context.Context, args map[string]any) *ToolResult {
 	path, ok := args["path"].(string)
 	if !ok {
-		return "", fmt.Errorf("path is required")
+		return ErrorResult("path is required")
 	}
 
 	content, ok := args["content"].(string)
 	if !ok {
-		return "", fmt.Errorf("content is required")
+		return ErrorResult("content is required")
 	}
 
-	filePath := filepath.Clean(path)
+	if err := appendFile(t.fs, path, content); err != nil {
+		return ErrorResult(err.Error())
+	}
+	return SilentResult(fmt.Sprintf("Appended to %s", path))
+}
 
-	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+// editFile reads the file via sysFs, performs the replacement, and writes back.
+// It uses a fileSystem interface, allowing the same logic for both restricted and unrestricted modes.
+func editFile(sysFs fileSystem, path, oldText, newText string) error {
+	content, err := sysFs.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close()
-
-	if _, err := f.WriteString(content); err != nil {
-		return "", fmt.Errorf("failed to append to file: %w", err)
+		return err
 	}
 
-	return fmt.Sprintf("Successfully appended to %s", path), nil
+	newContent, err := replaceEditContent(content, oldText, newText)
+	if err != nil {
+		return err
+	}
+
+	return sysFs.WriteFile(path, newContent)
+}
+
+// appendFile reads the existing content (if any) via sysFs, appends new content, and writes back.
+func appendFile(sysFs fileSystem, path, appendContent string) error {
+	content, err := sysFs.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	newContent := append(content, []byte(appendContent)...)
+	return sysFs.WriteFile(path, newContent)
+}
+
+// replaceEditContent handles the core logic of finding and replacing a single occurrence of oldText.
+func replaceEditContent(content []byte, oldText, newText string) ([]byte, error) {
+	contentStr := string(content)
+
+	if !strings.Contains(contentStr, oldText) {
+		return nil, fmt.Errorf("old_text not found in file. Make sure it matches exactly")
+	}
+
+	count := strings.Count(contentStr, oldText)
+	if count > 1 {
+		return nil, fmt.Errorf("old_text appears %d times. Please provide more context to make it unique", count)
+	}
+
+	newContent := strings.Replace(contentStr, oldText, newText, 1)
+	return []byte(newContent), nil
 }

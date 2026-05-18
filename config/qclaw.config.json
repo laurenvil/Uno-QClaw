@@ -1,0 +1,136 @@
+{
+  "_comment": "QClaw configuration for Arduino Uno Q \u2014 local llama-server inference via yzma. Copy to ~/.picoclaw/config.json to activate.",
+  "agents": {
+    "defaults": {
+      "workspace": "~/.picoclaw/workspace",
+      "restrict_to_workspace": false,
+      "allow_read_outside_workspace": true,
+      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "max_tokens": 2048,
+      "temperature": 0.3,
+      "max_tool_iterations": 8,
+      "summarize_message_threshold": 10,
+      "summarize_token_percent": 70
+    }
+  },
+  "model_list": [
+    {
+      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "model": "openai/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "http://127.0.0.1:8080/v1",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    }
+  ],
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "YOUR_TELEGRAM_BOT_TOKEN",
+      "allow_from": [],
+      "typing": {
+        "enabled": true
+      },
+      "placeholder": {
+        "enabled": true,
+        "text": "Asking QClaw..."
+      }
+    }
+  },
+  "tools": {
+    "exec": {
+      "enabled": false,
+      "enable_deny_patterns": true,
+      "allow_remote": false,
+      "timeout_seconds": 30
+    },
+    "web": {
+      "enabled": false
+    },
+    "web_fetch": {
+      "enabled": false
+    },
+    "cron": {
+      "enabled": false
+    },
+    "skills": {
+      "enabled": false
+    },
+    "find_skills": {
+      "enabled": false
+    },
+    "install_skill": {
+      "enabled": false
+    },
+    "spawn": {
+      "enabled": false
+    },
+    "subagent": {
+      "enabled": false
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "arduino": {
+      "enabled": true,
+      "fqbn": "arduino:zephyr:unoq",
+      "port": "192.168.1.168",
+      "protocol": "network"
+    },
+    "i2c": {
+      "enabled": false
+    },
+    "spi": {
+      "enabled": false
+    },
+    "camera": {
+      "enabled": true
+    },
+    "sysfs_led": {
+      "enabled": true
+    },
+    "network": {
+      "enabled": true
+    },
+    "i2cdetect": {
+      "enabled": true
+    },
+    "message": {
+      "enabled": false
+    },
+    "read_file": {
+      "enabled": true,
+      "max_read_file_size": 65536
+    },
+    "write_file": {
+      "enabled": true
+    },
+    "append_file": {
+      "enabled": false
+    },
+    "edit_file": {
+      "enabled": false
+    },
+    "list_dir": {
+      "enabled": true
+    },
+    "send_file": {
+      "enabled": false
+    }
+  },
+  "heartbeat": {
+    "enabled": false
+  },
+  "devices": {
+    "enabled": true,
+    "monitor_usb": true
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18790
+  }
+}
