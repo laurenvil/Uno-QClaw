@@ -185,14 +185,17 @@ Direct is ~33% faster on pure factual prompts; agentic is required for any promp
 | Direct | ~9.5K SOUL + ~7K pre-router | none | ~16K chars |
 | Agentic | ~9.5K SOUL + ~7K pre-router + ~3.4K tool schema | 8 tools | ~20K chars |
 
-### Adreno 702 OpenCL prefill acceleration (planned)
+### Ventuno Q GPU/NPU acceleration (planned)
 
-| Phase | CPU-only | OpenCL | Gain |
-|---|---|---|---|
-| Prefill TTFT (cold) | ~28 s | ~4–9 s | 5–13× |
-| Decode tok/s | ~8–12 | ~8–12 | No change* |
+The upcoming Arduino Ventuno Q (Qualcomm Dragonwing IQ-8275) brings two new compute units to the same QClaw stack:
 
-*Decode is memory-bandwidth-bound; GPU shares the same LPDDR4X bus.
+| Unit | Spec | Planned use |
+|---|---|---|
+| Adreno GPU (Vulkan 1.3 / OpenCL 3.0) | mobile-class, shared with 16 GB LPDDR5 | Prefill offload via llama.cpp Vulkan/OpenCL backend — eliminates cold-prefill latency on the 20K-char system prompt |
+| Hexagon Tensor Processor (NPU) | 40 TOPS INT8 | Quantized-model decode acceleration via QNN/llama.cpp Hexagon backend — targets 3B–7B models at interactive speed |
+| LPDDR5 bandwidth | 4× the Uno Q's LPDDR4X | Lifts the decode bandwidth ceiling that bottlenecks the Adreno 702 on the Uno Q today |
+
+QClaw's skills framework, pre-router, and arduino tool are forward-compatible — the same agentic/direct paths run unchanged on the Ventuno Q, with model selection upgraded from 0.8B Q4_0 to a larger NPU-accelerated quantization.
 
 ---
 

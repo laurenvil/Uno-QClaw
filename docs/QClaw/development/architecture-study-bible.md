@@ -507,30 +507,28 @@ void loop() {
 
 This section is for Linux-side programs running alongside QClaw.
 
-### Adreno 702 GPU
+### Adreno 702 GPU (current — graphics + hardware codecs)
 
-The GPU is used for two things: graphics (OpenGL/Vulkan) and compute (OpenCL). For AI inference, OpenCL can accelerate the llama.cpp prefill phase.
+On the Uno Q the Adreno 702 is used for graphics (OpenGL/Vulkan) and hardware video codecs surfaced through V4L2 (see "Video Codecs" below). The QClaw inference path on the Uno Q runs on the four Cortex-A53 cores; GPU offload for LLM prefill is not part of the current Uno Q surface.
 
-| API | Version | Use case |
-|-----|---------|----------|
+| API | Version | Use case on Uno Q |
+|-----|---------|-------------------|
 | OpenGL | 3.1 | 3D rendering |
 | OpenGL ES | 3.1 | Embedded graphics |
 | Vulkan | 1.0.318 | Low-level GPU |
-| OpenCL | 2.0 | GPGPU / AI prefill |
+| OpenCL | 2.0 | GPGPU compute |
 
-**OpenCL prefill acceleration for llama-server (planned, tracked under `docs/QClaw/Vulkan/`):**
-```bash
-# Build llama.cpp with OpenCL backend, then:
-./yzma/lib/llama-server \
-  -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  --host 127.0.0.1 --port 8080 \
-  --ctx-size 8192 --parallel 1 -t 4 \
-  --flash-attn on --mlock \
-  --cache-type-k q8_0 --cache-type-v q8_0 \
-  --reasoning-budget 800 \
-  --opencl  # enables Adreno 702 prefill
-```
-Effect: TTFT drops from ~28s to ~4–9s for Qwen3-0.6B Q4_0. Decode throughput unchanged (memory-bandwidth bound, not compute bound). This would materially improve the 0.6B's cold-prefill problem documented in Agentic Phase E.
+### Ventuno Q GPU/NPU (planned)
+
+The Arduino Ventuno Q (Qualcomm Dragonwing IQ-8275) brings two new compute units that QClaw is forward-compatible with:
+
+| Unit | Spec | Planned QClaw use |
+|---|---|---|
+| Adreno GPU | Vulkan 1.3 / OpenCL 3.0, paired with 16 GB LPDDR5 | LLM prefill offload via llama.cpp Vulkan or OpenCL backend — directly addresses the cold-prefill latency observed on the Uno Q's ~20K-char pre-router-expanded system prompt |
+| Hexagon Tensor Processor (NPU) | 40 TOPS INT8 | LLM decode acceleration via QNN/llama.cpp Hexagon backend — targets 3B–7B-class models at interactive speed |
+| LPDDR5 | 4× the Uno Q's LPDDR4X bandwidth | Lifts the memory-bandwidth ceiling that bounds decode on the Uno Q today |
+
+The same 23-rule pre-router, 15-skill tree, 8-tool surface, and arduino tool run unchanged on the Ventuno Q with the model and backend swapped underneath.
 
 ### Video Codecs (V4L2)
 

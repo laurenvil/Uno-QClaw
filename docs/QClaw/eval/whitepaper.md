@@ -519,13 +519,14 @@ The `compile_blink` repetition loop warrants investigation. Two experiments:
 1. **Structured prompt**: "Write only the sketch source code (no prose). After writing the sketch, call the arduino tool with action=upload."
 2. **max_tokens: 512**: Force the model to terminate the sketch quickly, then enter iteration 2 for the tool call.
 
-### 9.4 Adreno 702 OpenCL Acceleration
+### 9.4 Ventuno Q GPU/NPU Acceleration (planned)
 
-The Adreno 702 GPU supports OpenCL 2.0. llama.cpp's OpenCL backend (`ggml-opencl`) enables GPU-side prefill, which would directly address the 0.6B cold-prefill timeout. Preliminary measurements from adjacent work show 5–13× TTFT improvement on OpenCL-accelerated Adreno. This is tracked separately under `docs/QClaw/Vulkan/`.
+The Arduino Ventuno Q (Qualcomm Dragonwing IQ-8275, 8-core Kryo Gen 6 ARMv9, Adreno GPU with Vulkan 1.3 / OpenCL 3.0, Hexagon Tensor Processor NPU at 40 TOPS INT8, 16 GB LPDDR5) introduces two acceleration paths QClaw is forward-compatible with:
 
-### 9.5 Ventuno Q Readiness
+- **GPU prefill offload** via llama.cpp's Vulkan or OpenCL backend. The Ventuno Q's Adreno is a generation ahead of the Uno Q's Adreno 702, and LPDDR5 lifts the bandwidth ceiling that dominates decode on the Uno Q today. This directly addresses the cold-prefill timeout observed on the 0.8B and 0.6B models when the pre-router-expanded system prompt exceeds ~20K chars.
+- **NPU decode acceleration** via the Hexagon Tensor Processor. With 40 TOPS INT8 and a QNN/llama.cpp Hexagon backend, the Ventuno Q can support 3B–7B-class models at interactive speed — model scale large enough to close the prompt-specificity gap and the niche-topic quality ceiling observed at 0.8B.
 
-The Arduino Ventuno Q (QRB5165, 8-core Kryo Gen 6, 16 GB LPDDR5, Hexagon NPU 40 TOPS, Q2 2026) will support larger models (3B–7B range) and should eliminate both the cold-prefill timeout and the prompt-specificity problem at the model scale. The skills framework, pre-router, and arduino tool are forward-compatible.
+The skills framework, pre-router, 8-tool surface, and arduino tool are forward-compatible — the same agentic/direct paths run unchanged on the Ventuno Q with the model and backend swapped underneath.
 
 ---
 
