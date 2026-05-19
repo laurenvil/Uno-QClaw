@@ -1,7 +1,7 @@
-// PicoClaw - Ultra-lightweight personal AI agent
+// qclaw - Ultra-lightweight personal AI agent
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 qclaw contributors
 
 package anthropicmessages
 
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/providers/protocoltypes"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers/protocoltypes"
 )
 
 type (

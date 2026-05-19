@@ -1,8 +1,8 @@
 {
-  "_comment": "QClaw configuration for Arduino Uno Q \u2014 local llama-server inference via yzma. Copy to ~/.picoclaw/config.json to activate.",
+  "_comment": "QClaw configuration for Arduino Uno Q \u2014 local llama-server inference via yzma. Copy to ~/.qclaw/config.json to activate.",
   "agents": {
     "defaults": {
-      "workspace": "~/.picoclaw/workspace",
+      "workspace": "~/.qclaw/workspace",
       "restrict_to_workspace": false,
       "allow_read_outside_workspace": true,
       "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",

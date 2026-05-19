@@ -20,13 +20,13 @@ import (
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/identity"
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/media"
-	"github.com/sipeed/picoclaw/pkg/utils"
+	"github.com/laurenvil/Uno-QClaw/pkg/bus"
+	"github.com/laurenvil/Uno-QClaw/pkg/channels"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/identity"
+	"github.com/laurenvil/Uno-QClaw/pkg/logger"
+	"github.com/laurenvil/Uno-QClaw/pkg/media"
+	"github.com/laurenvil/Uno-QClaw/pkg/utils"
 )
 
 type FeishuChannel struct {
@@ -617,8 +617,8 @@ func (c *FeishuChannel) downloadResource(
 		filename += fallbackExt
 	}
 
-	// Write to the shared picoclaw_media directory using a unique name to avoid collisions.
-	mediaDir := filepath.Join(os.TempDir(), "picoclaw_media")
+	// Write to the shared qclaw_media directory using a unique name to avoid collisions.
+	mediaDir := filepath.Join(os.TempDir(), "qclaw_media")
 	if mkdirErr := os.MkdirAll(mediaDir, 0o700); mkdirErr != nil {
 		logger.ErrorCF("feishu", "Failed to create media directory", map[string]any{
 			"error": mkdirErr.Error(),

@@ -3,12 +3,12 @@
 PicoClaw performs multiple complex interactions under the hood for every single request it receives—from routing messages and evaluating complexity, to executing tools and adapting to model failures. Being able to see exactly what is happening is crucial, not just for troubleshooting potential issues, but also for truly understanding how the agent operates.
 ## Starting PicoClaw in Debug Mode
 
-To get detailed information about what the agent is doing (LLM requests, tool calls, message routing), you can start the PicoClaw gateway with the debug flag:
+To get detailed information about what the agent is doing (LLM requests, tool calls, message routing), you can start the qclaw gateway with the debug flag:
 
 ```bash
-picoclaw gateway --debug
+qclaw gateway --debug
 # or
-picoclaw gateway -d
+qclaw gateway -d
 ```
 
 In this mode, the system will format the logs extensively and display previews of system prompts and tool execution results.
@@ -22,7 +22,7 @@ If you need to inspect the complete output of a command or the exact payload sen
 **Note:** This flag *only* works when combined with the `--debug` mode.
 
 ```bash
-picoclaw gateway --debug --no-truncate
+qclaw gateway --debug --no-truncate
 
 ```
 

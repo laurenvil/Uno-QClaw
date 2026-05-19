@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/auth"
-	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/auth"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 func resetModelProbeHooks(t *testing.T) {

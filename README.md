@@ -2,7 +2,7 @@
 
 **QClaw** is an on-device agentic AI assistant for the Arduino Uno Q. It writes, compiles, and uploads Arduino sketches; captures camera frames; drives Linux-side LEDs; reports network state; and scans I²C buses — all running entirely on the board. No internet. No API keys. No cloud.
 
-Built on [picoclaw](https://github.com/sipeed/picoclaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
+Forked from [picoclaw](https://github.com/sipeed/picoclaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
 
 QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
 
@@ -25,7 +25,7 @@ QClaw ships two execution paths sharing the same model, system prompt, and 15-sk
 | Scan Linux I²C buses | Agentic | `i2cdetect` tool → list `/dev/i2c-*`, `i2cdetect -y -r <bus>` |
 | Read/write workspace files | Agentic | `read_file`, `write_file`, `list_dir` |
 | Answer hardware questions | Both | Pre-router inlines the relevant skill content (15 skills covered) |
-| Telegram, terminal, SSH | Agentic | picoclaw channel adapters |
+| Telegram, terminal, SSH | Agentic | qclaw channel adapters |
 | Fully offline | Both | All inference, compilation, and flashing runs locally on the QRB2210 |
 
 ---
@@ -105,7 +105,7 @@ The agent loop's response-format scaffolding contributes real quality on complex
 │                                                                │
 │  Agentic path                                                  │
 │  ┌────────────────────────────────────────────────────┐       │
-│  │ picoclaw agent / gateway (Go)                       │       │
+│  │ qclaw agent / gateway (Go)                       │       │
 │  │   ├── channels/  (Telegram, terminal, SSH, ...)     │       │
 │  │   ├── pre-router (skill_preload.go, 23 rules)       │       │
 │  │   ├── agent loop (multi-iter, tool dispatch)        │       │
@@ -210,7 +210,7 @@ QClaw's skills framework, pre-router, and arduino tool are forward-compatible �
 | `make qclaw-setup` | Reinstall system prompt + skills tree after a git pull |
 | `make qclaw-arduino-setup` | Install or update arduino-cli and the Uno Q board core |
 | `make qclaw-stop` | Stop background processes |
-| `make build` | Build the picoclaw binary for current platform |
+| `make build` | Build the qclaw binary for current platform |
 | `make build-linux-arm64` | Cross-compile for Uno Q (ARM64) |
 
 ---
@@ -219,7 +219,7 @@ QClaw's skills framework, pre-router, and arduino tool are forward-compatible �
 
 ```
 UnoQClaw/
-├── cmd/picoclaw/             # CLI entry point (Cobra)
+├── cmd/qclaw/             # CLI entry point (Cobra)
 ├── pkg/
 │   ├── agent/                # Agent loop, context, pre-router, tool dispatch
 │   ├── channels/             # Telegram, terminal, IRC, Matrix, ...

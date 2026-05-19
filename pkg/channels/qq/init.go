@@ -1,9 +1,9 @@
 package qq
 
 import (
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
-	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/bus"
+	"github.com/laurenvil/Uno-QClaw/pkg/channels"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 func init() {

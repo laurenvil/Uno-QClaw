@@ -14,12 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/identity"
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/utils"
+	"github.com/laurenvil/Uno-QClaw/pkg/bus"
+	"github.com/laurenvil/Uno-QClaw/pkg/channels"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/identity"
+	"github.com/laurenvil/Uno-QClaw/pkg/logger"
+	"github.com/laurenvil/Uno-QClaw/pkg/utils"
 )
 
 // WeComAIBotChannel implements the Channel interface for WeCom AI Bot (企业微信智能机器人)

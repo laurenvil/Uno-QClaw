@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=QClaw Launcher
+Comment=Web-based configuration and management UI for QClaw
+Exec=qclaw-launcher
+Icon=qclaw-launcher
+Terminal=true
+Type=Application
+Categories=Utility;Network;
+Keywords=qclaw;ai;agent;arduino;uno-q;

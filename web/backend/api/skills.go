@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/skills"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/skills"
 )
 
 type skillSupportResponse struct {
@@ -309,18 +309,18 @@ func loadSkillContent(path string) (string, error) {
 }
 
 func globalConfigDir() string {
-	if home := os.Getenv("PICOCLAW_HOME"); home != "" {
+	if home := os.Getenv("QCLAW_HOME"); home != "" {
 		return home
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".picoclaw")
+	return filepath.Join(home, ".qclaw")
 }
 
 func builtinSkillsDir() string {
-	if path := os.Getenv("PICOCLAW_BUILTIN_SKILLS"); path != "" {
+	if path := os.Getenv("QCLAW_BUILTIN_SKILLS"); path != "" {
 		return path
 	}
 	wd, err := os.Getwd()

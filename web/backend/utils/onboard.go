@@ -18,8 +18,8 @@ func EnsureOnboarded(configPath string) error {
 		return fmt.Errorf("stat config: %w", err)
 	}
 
-	cmd := execCommand(FindPicoclawBinary(), "onboard")
-	cmd.Env = append(os.Environ(), "PICOCLAW_CONFIG="+configPath)
+	cmd := execCommand(FindQClawBinary(), "onboard")
+	cmd.Env = append(os.Environ(), "QCLAW_CONFIG="+configPath)
 	cmd.Stdin = strings.NewReader("n\n")
 
 	output, err := cmd.CombinedOutput()

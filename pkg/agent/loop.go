@@ -1,8 +1,8 @@
-// PicoClaw - Ultra-lightweight personal AI agent
+// qclaw - Ultra-lightweight personal AI agent
 // Inspired by and based on nanobot: https://github.com/HKUDS/nanobot
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 qclaw contributors
 
 package agent
 
@@ -19,20 +19,20 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/sipeed/picoclaw/pkg/bus"
-	"github.com/sipeed/picoclaw/pkg/channels"
-	"github.com/sipeed/picoclaw/pkg/commands"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/constants"
-	"github.com/sipeed/picoclaw/pkg/logger"
-	"github.com/sipeed/picoclaw/pkg/media"
-	"github.com/sipeed/picoclaw/pkg/providers"
-	"github.com/sipeed/picoclaw/pkg/routing"
-	"github.com/sipeed/picoclaw/pkg/skills"
-	"github.com/sipeed/picoclaw/pkg/state"
-	"github.com/sipeed/picoclaw/pkg/tools"
-	"github.com/sipeed/picoclaw/pkg/utils"
-	"github.com/sipeed/picoclaw/pkg/voice"
+	"github.com/laurenvil/Uno-QClaw/pkg/bus"
+	"github.com/laurenvil/Uno-QClaw/pkg/channels"
+	"github.com/laurenvil/Uno-QClaw/pkg/commands"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/constants"
+	"github.com/laurenvil/Uno-QClaw/pkg/logger"
+	"github.com/laurenvil/Uno-QClaw/pkg/media"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers"
+	"github.com/laurenvil/Uno-QClaw/pkg/routing"
+	"github.com/laurenvil/Uno-QClaw/pkg/skills"
+	"github.com/laurenvil/Uno-QClaw/pkg/state"
+	"github.com/laurenvil/Uno-QClaw/pkg/tools"
+	"github.com/laurenvil/Uno-QClaw/pkg/utils"
+	"github.com/laurenvil/Uno-QClaw/pkg/voice"
 )
 
 type AgentLoop struct {
@@ -794,7 +794,7 @@ func (al *AgentLoop) resolveMessageRoute(msg bus.InboundMessage) (routing.Resolv
 func resolveScopeKey(route routing.ResolvedRoute, msgSessionKey string) string {
 	// An explicitly-set session key on the inbound message always wins. This
 	// preserves both agent-scoped keys (cron tasks set "agent:<id>:...") and
-	// CLI-user-provided keys (`picoclaw agent --session=<key>`). Before the
+	// CLI-user-provided keys (`qclaw agent --session=<key>`). Before the
 	// fix, only keys prefixed with "agent:" were preserved, so CLI sessions
 	// silently fell back to route.SessionKey ("cli:default") regardless of
 	// what the user passed.

@@ -1,4 +1,4 @@
-module github.com/sipeed/picoclaw
+module github.com/laurenvil/Uno-QClaw
 
 go 1.25.7
 

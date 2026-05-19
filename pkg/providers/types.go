@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sipeed/picoclaw/pkg/providers/protocoltypes"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers/protocoltypes"
 )
 
 type (

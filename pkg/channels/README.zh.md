@@ -1,6 +1,6 @@
 # PicoClaw Channel System：完整开发指南
 
-> **影响范围**: `pkg/channels/`, `pkg/bus/`, `pkg/media/`, `pkg/identity/`, `cmd/picoclaw/internal/gateway/`
+> **影响范围**: `pkg/channels/`, `pkg/bus/`, `pkg/media/`, `pkg/identity/`, `cmd/qclaw/internal/gateway/`
 
 ---
 
@@ -162,19 +162,19 @@ pkg/identity/
 package channels
 
 import (
-    "github.com/sipeed/picoclaw/pkg/bus"
-    "github.com/sipeed/picoclaw/pkg/config"
+    "github.com/laurenvil/Uno-QClaw/pkg/bus"
+    "github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 // 新代码（重构分支）
 package telegram
 
 import (
-    "github.com/sipeed/picoclaw/pkg/bus"
-    "github.com/sipeed/picoclaw/pkg/channels"     // 引用父包
-    "github.com/sipeed/picoclaw/pkg/config"
-    "github.com/sipeed/picoclaw/pkg/identity"      // 新增
-    "github.com/sipeed/picoclaw/pkg/media"          // 新增（如需媒体）
+    "github.com/laurenvil/Uno-QClaw/pkg/bus"
+    "github.com/laurenvil/Uno-QClaw/pkg/channels"     // 引用父包
+    "github.com/laurenvil/Uno-QClaw/pkg/config"
+    "github.com/laurenvil/Uno-QClaw/pkg/identity"      // 新增
+    "github.com/laurenvil/Uno-QClaw/pkg/media"          // 新增（如需媒体）
 )
 ```
 
@@ -321,9 +321,9 @@ c.HandleMessage(ctx, peer, messageID, senderID, chatID, content, mediaRefs, meta
 package telegram
 
 import (
-    "github.com/sipeed/picoclaw/pkg/bus"
-    "github.com/sipeed/picoclaw/pkg/channels"
-    "github.com/sipeed/picoclaw/pkg/config"
+    "github.com/laurenvil/Uno-QClaw/pkg/bus"
+    "github.com/laurenvil/Uno-QClaw/pkg/channels"
+    "github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 func init() {
@@ -336,11 +336,11 @@ func init() {
 **3h. 在 Gateway 中导入子包**
 
 ```go
-// cmd/picoclaw/internal/gateway/helpers.go
+// cmd/qclaw/internal/gateway/helpers.go
 import (
-    _ "github.com/sipeed/picoclaw/pkg/channels/telegram"   // 触发 init() 注册
-    _ "github.com/sipeed/picoclaw/pkg/channels/discord"
-    _ "github.com/sipeed/picoclaw/pkg/channels/your_new_channel"  // 新增
+    _ "github.com/laurenvil/Uno-QClaw/pkg/channels/telegram"   // 触发 init() 注册
+    _ "github.com/laurenvil/Uno-QClaw/pkg/channels/discord"
+    _ "github.com/laurenvil/Uno-QClaw/pkg/channels/your_new_channel"  // 新增
 )
 ```
 
@@ -421,9 +421,9 @@ Agent Loop 的主要变化：
 package matrix
 
 import (
-    "github.com/sipeed/picoclaw/pkg/bus"
-    "github.com/sipeed/picoclaw/pkg/channels"
-    "github.com/sipeed/picoclaw/pkg/config"
+    "github.com/laurenvil/Uno-QClaw/pkg/bus"
+    "github.com/laurenvil/Uno-QClaw/pkg/channels"
+    "github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 func init() {
@@ -442,11 +442,11 @@ import (
     "context"
     "fmt"
 
-    "github.com/sipeed/picoclaw/pkg/bus"
-    "github.com/sipeed/picoclaw/pkg/channels"
-    "github.com/sipeed/picoclaw/pkg/config"
-    "github.com/sipeed/picoclaw/pkg/identity"
-    "github.com/sipeed/picoclaw/pkg/logger"
+    "github.com/laurenvil/Uno-QClaw/pkg/bus"
+    "github.com/laurenvil/Uno-QClaw/pkg/channels"
+    "github.com/laurenvil/Uno-QClaw/pkg/config"
+    "github.com/laurenvil/Uno-QClaw/pkg/identity"
+    "github.com/laurenvil/Uno-QClaw/pkg/logger"
 )
 
 // MatrixChannel implements channels.Channel for the Matrix protocol.
@@ -809,9 +809,9 @@ if m.config.Channels.Matrix.Enabled && m.config.Channels.Matrix.Token != "" {
 #### 在 Gateway 中添加 blank import
 
 ```go
-// cmd/picoclaw/internal/gateway/helpers.go
+// cmd/qclaw/internal/gateway/helpers.go
 import (
-    _ "github.com/sipeed/picoclaw/pkg/channels/matrix"
+    _ "github.com/laurenvil/Uno-QClaw/pkg/channels/matrix"
 )
 ```
 

@@ -57,8 +57,8 @@ from pathlib import Path
 
 # ----- config -----
 
-PICOCLAW_HOME = Path(os.environ.get("PICOCLAW_HOME", str(Path.home() / ".picoclaw")))
-WORKSPACE = PICOCLAW_HOME / "workspace"
+QCLAW_HOME = Path(os.environ.get("QCLAW_HOME", str(Path.home() / ".qclaw")))
+WORKSPACE = QCLAW_HOME / "workspace"
 SOUL_PATH = WORKSPACE / "SOUL.md"
 SKILLS_DIR = WORKSPACE / "skills"
 

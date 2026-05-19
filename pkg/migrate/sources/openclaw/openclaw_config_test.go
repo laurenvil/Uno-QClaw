@@ -82,8 +82,8 @@ func TestLoadOpenClawConfig(t *testing.T) {
 	}
 
 	workspace := cfg.GetDefaultWorkspace()
-	if workspace != "~/.picoclaw/workspace" {
-		t.Errorf("expected workspace '~/.picoclaw/workspace', got '%s'", workspace)
+	if workspace != "~/.qclaw/workspace" {
+		t.Errorf("expected workspace '~/.qclaw/workspace', got '%s'", workspace)
 	}
 
 	agents := cfg.GetAgents()
@@ -245,8 +245,8 @@ func TestConvertToPicoClaw(t *testing.T) {
 	if picoCfg.Agents.Defaults.ModelName != "claude-sonnet-4-20250514" {
 		t.Errorf("expected model 'claude-sonnet-4-20250514', got '%s'", picoCfg.Agents.Defaults.ModelName)
 	}
-	if picoCfg.Agents.Defaults.Workspace != "~/.picoclaw/workspace" {
-		t.Errorf("expected workspace '~/.picoclaw/workspace', got '%s'", picoCfg.Agents.Defaults.Workspace)
+	if picoCfg.Agents.Defaults.Workspace != "~/.qclaw/workspace" {
+		t.Errorf("expected workspace '~/.qclaw/workspace', got '%s'", picoCfg.Agents.Defaults.Workspace)
 	}
 
 	if len(picoCfg.Agents.List) != 2 {
@@ -291,7 +291,7 @@ func TestConvertToPicoClaw(t *testing.T) {
 }
 
 func TestToStandardConfig_ExecAllowRemoteDefaultsTrue(t *testing.T) {
-	cfg := (&PicoClawConfig{
+	cfg := (&qclawconfig{
 		Tools: ToolsConfig{
 			Exec: ExecConfig{
 				EnableDenyPatterns: true,
@@ -634,12 +634,12 @@ func TestLoadOpenClawConfigFromDir(t *testing.T) {
 }
 
 func TestToStandardConfig(t *testing.T) {
-	picoCfg := &PicoClawConfig{
+	picoCfg := &qclawconfig{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
 				Provider:  "anthropic",
 				ModelName: "claude-sonnet-4-20250514",
-				Workspace: "~/.picoclaw/workspace",
+				Workspace: "~/.qclaw/workspace",
 			},
 			List: []AgentConfig{
 				{
@@ -681,8 +681,8 @@ func TestToStandardConfig(t *testing.T) {
 	if stdCfg.Agents.Defaults.ModelName != "claude-sonnet-4-20250514" {
 		t.Errorf("expected model name 'claude-sonnet-4-20250514', got '%s'", stdCfg.Agents.Defaults.ModelName)
 	}
-	if stdCfg.Agents.Defaults.Workspace != "~/.picoclaw/workspace" {
-		t.Errorf("expected workspace '~/.picoclaw/workspace', got '%s'", stdCfg.Agents.Defaults.Workspace)
+	if stdCfg.Agents.Defaults.Workspace != "~/.qclaw/workspace" {
+		t.Errorf("expected workspace '~/.qclaw/workspace', got '%s'", stdCfg.Agents.Defaults.Workspace)
 	}
 
 	if len(stdCfg.Agents.List) != 1 {

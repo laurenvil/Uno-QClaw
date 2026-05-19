@@ -41,7 +41,7 @@ The Arduino Uno Q has a split-processor architecture that is critical to underst
 - 4 GB LPDDR4X
 - Adreno 702 GPU (OpenCL 2.0)
 - Debian Linux, kernel 6.16
-- Runs llama.cpp (`llama-server`), the picoclaw gateway, and all agent logic
+- Runs llama.cpp (`llama-server`), the qclaw gateway, and all agent logic
 
 **MCU side — STM32U585:**
 - ARM Cortex-M33 @ 160 MHz
@@ -58,7 +58,7 @@ The MCU is flashed from the MPU via SWD using OpenOCD with the `linuxgpiod` inte
 User input (terminal / SSH / Telegram)
     │
     ▼
-picoclaw gateway  (pkg/channels/)
+qclaw gateway  (pkg/channels/)
     │
     ▼
 AgentLoop  (pkg/agent/loop.go)
@@ -72,9 +72,9 @@ AgentLoop  (pkg/agent/loop.go)
                     └── openocd -f openocd_gpiod.cfg -c "flash write_image ... 0x8100000"
 ```
 
-**LLM inference:** `llama-server` (llama.cpp b9127) serves an OpenAI-compatible HTTP API at `127.0.0.1:8080/v1`. The picoclaw gateway uses the `openai_compat` provider pointed at this endpoint.
+**LLM inference:** `llama-server` (llama.cpp b9127) serves an OpenAI-compatible HTTP API at `127.0.0.1:8080/v1`. The qclaw gateway uses the `openai_compat` provider pointed at this endpoint.
 
-**Workspace:** `~/.picoclaw/workspace/` contains `SOUL.md` (system prompt), `IDENTITY.md`, and a `skills/` tree that the pre-router reads at request time.
+**Workspace:** `~/.qclaw/workspace/` contains `SOUL.md` (system prompt), `IDENTITY.md`, and a `skills/` tree that the pre-router reads at request time.
 
 ### 2.3 The Skills Framework
 
@@ -350,7 +350,7 @@ Same prompt as Demo 2, new session key (`run7-led-matrix-demo3`), confirming the
 
 | Iter | Tool call | Result |
 |---|---|---|
-| 1 | `list_dir("/home/arduino/.picoclaw/workspace")` | OK — unnecessary |
+| 1 | `list_dir("/home/arduino/.qclaw/workspace")` | OK — unnecessary |
 | 2 | `read_file(".../sketches/scroll-qclaw.ino")` | ❌ not found |
 | 3 | `write_file(".../sketches/scroll-qclaw.ino", <canonical sketch>)` | OK (7 ms) |
 | 4 | `arduino({action:"upload", sketch:<canonical>})` | ✅ Flashed (33.8s) |
@@ -441,7 +441,7 @@ From `variants/arduino_uno_q_stm32u585xx/flash_sketch.cfg` (the official Zephyr 
 flash write_image erase ${filename} 0x8100000 bin
 ```
 
-The picoclaw `runFlashCommand` implementation mirrors this exactly:
+the qclaw `runFlashCommand` implementation mirrors this exactly:
 
 ```go
 const sketchAddress = "0x8100000"

@@ -130,7 +130,7 @@ Open `http://<board-ip>:8000` from any browser on the same Wi-Fi.
 ## Pitfalls
 
 - **Network failures stall the MCU if you call `bridge.call()` for HTTP.** Use `Bridge.notify` from the MCU and have Python handle the HTTP timeout — that way the MCU's `loop()` is never blocked on a 5-second TCP wait.
-- **Hardcoded URLs / API keys.** Put credentials in `~/.picoclaw/config.json` or an `.env` file, not in the Python source.
+- **Hardcoded URLs / API keys.** Put credentials in `~/.qclaw/config.json` or an `.env` file, not in the Python source.
 - **Forgetting `timeout=` on `requests.get/post`.** Without a timeout, a hung server blocks Python forever.
 - **Logging every reading.** `bridge.log()` on a 1 kHz sensor will saturate the USB CDC channel. Throttle or batch.
 

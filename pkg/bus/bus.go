@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 
-	"github.com/sipeed/picoclaw/pkg/logger"
+	"github.com/laurenvil/Uno-QClaw/pkg/logger"
 )
 
 // ErrBusClosed is returned when publishing to a closed MessageBus.

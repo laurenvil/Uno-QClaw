@@ -98,8 +98,8 @@ func setupPreloadTest(t *testing.T) *ContextBuilder {
 	)
 
 	// Disable any inherited global / builtin roots so test output is deterministic.
-	t.Setenv("PICOCLAW_BUILTIN_SKILLS", filepath.Join(ws, "no-such-dir"))
-	t.Setenv("PICOCLAW_HOME", filepath.Join(ws, "fake-home"))
+	t.Setenv("QCLAW_BUILTIN_SKILLS", filepath.Join(ws, "no-such-dir"))
+	t.Setenv("QCLAW_HOME", filepath.Join(ws, "fake-home"))
 
 	return NewContextBuilder(ws)
 }
@@ -302,8 +302,8 @@ func TestPreloadSkillsForMessage_MissingSkillIsNoOp(t *testing.T) {
 	// Workspace with no skills installed: pre-router should silently return
 	// the empty string rather than emitting an empty preamble.
 	ws := t.TempDir()
-	t.Setenv("PICOCLAW_BUILTIN_SKILLS", filepath.Join(ws, "no-such-dir"))
-	t.Setenv("PICOCLAW_HOME", filepath.Join(ws, "fake-home"))
+	t.Setenv("QCLAW_BUILTIN_SKILLS", filepath.Join(ws, "no-such-dir"))
+	t.Setenv("QCLAW_HOME", filepath.Join(ws, "fake-home"))
 	cb := NewContextBuilder(ws)
 	if out := cb.PreloadSkillsForMessage("breathe the LED on pin 9"); out != "" {
 		t.Fatalf("expected empty for empty workspace, got %q", out)

@@ -42,12 +42,12 @@ PicoClaw 本身在很大程度上是借助 AI 辅助开发的——我们拥抱�
 1. 在 GitHub 上 **Fork** 本仓库。
 2. 将你的 Fork **克隆**到本地：
    ```bash
-   git clone https://github.com/<你的用户名>/picoclaw.git
-   cd picoclaw
+   git clone https://github.com/<你的用户名>/Uno-QClaw.git
+   cd Uno-QClaw
    ```
 3. 添加上游远程仓库：
    ```bash
-   git remote add upstream https://github.com/sipeed/picoclaw.git
+   git remote add upstream https://github.com/laurenvil/Uno-QClaw.git
    ```
 
 ---

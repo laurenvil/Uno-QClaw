@@ -42,12 +42,12 @@ For substantial new features, please open an issue first to discuss the design b
 1. **Fork** the repository on GitHub.
 2. **Clone** your fork locally:
    ```bash
-   git clone https://github.com/<your-username>/picoclaw.git
-   cd picoclaw
+   git clone https://github.com/<your-username>/Uno-QClaw.git
+   cd Uno-QClaw
    ```
 3. Add the upstream remote:
    ```bash
-   git remote add upstream https://github.com/sipeed/picoclaw.git
+   git remote add upstream https://github.com/laurenvil/Uno-QClaw.git
    ```
 
 ---

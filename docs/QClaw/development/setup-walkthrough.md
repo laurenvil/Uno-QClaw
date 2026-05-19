@@ -66,9 +66,9 @@ make qclaw-install
 ```
 
 This single command:
-1. Builds the QClaw binary (`build/picoclaw`)
-2. Installs the system prompt (`SOUL.md`), identity files, and the **15-skill tree** (`sketch-patterns/`, `led-matrix/`, `uno-q-hardware/`, `bridge/`, `wireless/`, `vision/`, `audio/`, `arduino-app-lab/`, `modulino/`, `linux-led/`, plus general skills) to `~/.picoclaw/workspace/`
-3. Copies `config/qclaw.config.json` to `~/.picoclaw/config.json` (first run only). The v3 config exposes **8 narrow tools**: `read_file`, `write_file`, `list_dir`, `arduino` (compile/flash), `camera` (V4L2 still capture), `sysfs_led` (MPU-side RGB LEDs), `network` (read-only IP/gateway/interfaces), `i2cdetect` (Linux I²C bus scan). General `exec`, `message`, `edit_file`, generic `i2c`/`spi` remain disabled — every new tool is narrowly scoped and validates inputs against allow-lists. Total schema overhead: ~3,400 chars.
+1. Builds the QClaw binary (`build/qclaw`)
+2. Installs the system prompt (`SOUL.md`), identity files, and the **15-skill tree** (`sketch-patterns/`, `led-matrix/`, `uno-q-hardware/`, `bridge/`, `wireless/`, `vision/`, `audio/`, `arduino-app-lab/`, `modulino/`, `linux-led/`, plus general skills) to `~/.qclaw/workspace/`
+3. Copies `config/qclaw.config.json` to `~/.qclaw/config.json` (first run only). The v3 config exposes **8 narrow tools**: `read_file`, `write_file`, `list_dir`, `arduino` (compile/flash), `camera` (V4L2 still capture), `sysfs_led` (MPU-side RGB LEDs), `network` (read-only IP/gateway/interfaces), `i2cdetect` (Linux I²C bus scan). General `exec`, `message`, `edit_file`, generic `i2c`/`spi` remain disabled — every new tool is narrowly scoped and validates inputs against allow-lists. Total schema overhead: ~3,400 chars.
 4. Downloads and installs `arduino-cli` to `~/.local/bin/` if not present
 5. Installs the `arduino:zephyr` board core for the Uno Q
 6. Runs the interactive setup wizard:
@@ -248,12 +248,12 @@ Users can then SSH in and run `make qclaw-agentic` or `make qclaw-direct` — ll
 
 1. Check llama-server: `ps aux | grep llama-server`
 2. Check it is healthy: `curl http://127.0.0.1:8080/v1/models`
-3. Run with debug logging: `./build/picoclaw gateway --debug`
-4. Confirm `request_timeout` in `~/.picoclaw/config.json` is `1200` — the default 30s times out during model warm-up
+3. Run with debug logging: `./build/qclaw gateway --debug`
+4. Confirm `request_timeout` in `~/.qclaw/config.json` is `1200` — the default 30s times out during model warm-up
 
 **Responses are very slow (> 60 seconds)**
 
-- Confirm `/no_think` is the first line of `~/.picoclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120s
+- Confirm `/no_think` is the first line of `~/.qclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120s
 - Check RAM: `free -h` — llama-server needs ~1.3 GB free
 
 **Sketch compilation fails**

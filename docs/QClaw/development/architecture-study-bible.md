@@ -235,7 +235,7 @@ When a user sends a Telegram message OR types at the agent terminal:
 User input (Telegram / terminal / SSH)
     │
     ▼
-picoclaw channel adapter (pkg/channels/{telegram,cli,...}.go)
+qclaw channel adapter (pkg/channels/{telegram,cli,...}.go)
     │ For Telegram: sends "Asking QClaw..." immediately
     │ Publishes InboundMessage to the message bus
     ▼
@@ -256,7 +256,7 @@ ContextBuilder.PreloadSkillsForMessage()  ← v3 pre-router
     ▼
 ContextBuilder.BuildMessages() (pkg/agent/context.go)
     │ Assembles the cached system prompt:
-    │   1. getIdentity() — hardcoded picoclaw identity block
+    │   1. getIdentity() — hardcoded qclaw identity block
     │   2. SOUL.md — QClaw Arduino persona + minimal rules
     │   3. IDENTITY.md — QClaw name + purpose
     │   4. <skills> XML — index of all 15 available skills
@@ -583,7 +583,7 @@ The capability matrix depends on which execution path is active.
 | Explains hardware concepts | LLM answers; pre-router inlines the right skill content on relevant queries (15 skills covered) |
 | Reads/writes files in workspace | `read_file`, `write_file`, `list_dir` tools |
 | Telegram channel | Gateway routes Telegram messages to the agent loop |
-| Remembers conversation | Session history in `~/.picoclaw/workspace/sessions/` |
+| Remembers conversation | Session history in `~/.qclaw/workspace/sessions/` |
 
 ### Direct path (`make qclaw-direct`)
 
@@ -675,9 +675,9 @@ Earlier QClaw versions registered an `i2c` tool in `pkg/tools/i2c.go` that acces
 ```
 ContextBuilder.BuildMessages() in pkg/agent/context.go
 │
-├── getIdentity()                ← hardcoded picoclaw identity block
+├── getIdentity()                ← hardcoded qclaw identity block
 │
-├── LoadBootstrapFiles()         ← reads from ~/.picoclaw/workspace/:
+├── LoadBootstrapFiles()         ← reads from ~/.qclaw/workspace/:
 │   ├── AGENTS.md                (if exists)
 │   ├── SOUL.md                  ← QClaw Arduino persona + minimal rules
 │   ├── USER.md                  (if exists)
@@ -827,10 +827,10 @@ This dual-chip design is why the board needs 4 GB of RAM — the AI model alone 
 
 ```
 QClaw/
-├── cmd/picoclaw/                # CLI entry point (Cobra)
+├── cmd/qclaw/                # CLI entry point (Cobra)
 │   └── internal/
 │       ├── agent/               # agent command + helpers
-│       └── onboard/             # picoclaw onboard (embed-FS skills bootstrap)
+│       └── onboard/             # qclaw onboard (embed-FS skills bootstrap)
 │           └── workspace/       # ← embedded mirror of /workspace
 ├── pkg/
 │   ├── agent/                   # AgentLoop, ContextBuilder, MemoryStore

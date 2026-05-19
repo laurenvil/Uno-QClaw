@@ -8,14 +8,14 @@ build/
 *.dylib
 *.test
 *.out
-/picoclaw
-/picoclaw-test
+/qclaw
+/qclaw-test
 cmd/**/workspace
 
-# Picoclaw specific
+# QClaw specific
 
-# PicoClaw
-.picoclaw/
+# QClaw
+.qclaw/
 config.json
 sessions/
 build/

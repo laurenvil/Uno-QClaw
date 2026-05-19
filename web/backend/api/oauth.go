@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sipeed/picoclaw/pkg/auth"
-	"github.com/sipeed/picoclaw/pkg/config"
-	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/laurenvil/Uno-QClaw/pkg/auth"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers"
 )
 
 const (
@@ -492,7 +492,7 @@ func (h *Handler) handleOAuthLogout(w http.ResponseWriter, r *http.Request) {
 
 func renderOAuthCallbackPage(w http.ResponseWriter, flowID, status, title, errMsg string) {
 	payload := map[string]string{
-		"type":   "picoclaw-oauth-result",
+		"type":   "qclaw-oauth-result",
 		"flowId": flowID,
 		"status": status,
 	}

@@ -3,15 +3,15 @@
 # QClaw terminal chat. Cleans up all child processes on exit.
 set -euo pipefail
 
-PICOCLAW_HOME="${PICOCLAW_HOME:-$HOME/.picoclaw}"
+QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
 QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf}"
 LLAMA_SERVER="${LLAMA_SERVER:-./yzma/lib/llama-server}"
-BINARY="${BINARY:-./build/picoclaw}"
+BINARY="${BINARY:-./build/qclaw}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
-LLAMA_LOG="$PICOCLAW_HOME/llama-server.log"
-GATEWAY_LOG="$PICOCLAW_HOME/gateway.log"
-LLAMA_PID_FILE="$PICOCLAW_HOME/llama-server.pid"
-GATEWAY_PID_FILE="$PICOCLAW_HOME/gateway.pid"
+LLAMA_LOG="$QCLAW_HOME/llama-server.log"
+GATEWAY_LOG="$QCLAW_HOME/gateway.log"
+LLAMA_PID_FILE="$QCLAW_HOME/llama-server.pid"
+GATEWAY_PID_FILE="$QCLAW_HOME/gateway.pid"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 
@@ -36,8 +36,8 @@ if [ ! -f "$QCLAW_MODEL" ]; then
     exit 1
 fi
 
-if [ ! -f "$PICOCLAW_HOME/config.json" ]; then
-    echo "Error: config not found at $PICOCLAW_HOME/config.json"
+if [ ! -f "$QCLAW_HOME/config.json" ]; then
+    echo "Error: config not found at $QCLAW_HOME/config.json"
     echo "Run: make qclaw-setup"
     exit 1
 fi
@@ -114,8 +114,8 @@ fi
 # ── Gateway (Telegram) ────────────────────────────────────────────────────────
 
 # Start gateway only if a real Telegram token is configured
-if grep -q '"token"' "$PICOCLAW_HOME/config.json" && \
-   ! grep -q 'YOUR_TELEGRAM_BOT_TOKEN' "$PICOCLAW_HOME/config.json"; then
+if grep -q '"token"' "$QCLAW_HOME/config.json" && \
+   ! grep -q 'YOUR_TELEGRAM_BOT_TOKEN' "$QCLAW_HOME/config.json"; then
     echo "Starting QClaw gateway (Telegram)..."
     "$BINARY" gateway >> "$GATEWAY_LOG" 2>&1 &
     echo $! > "$GATEWAY_PID_FILE"
@@ -123,7 +123,7 @@ if grep -q '"token"' "$PICOCLAW_HOME/config.json" && \
     echo "  Gateway running — message your bot from Telegram"
 else
     echo "  Telegram not configured — skipping gateway"
-    echo "  (Set token in $PICOCLAW_HOME/config.json to enable)"
+    echo "  (Set token in $QCLAW_HOME/config.json to enable)"
 fi
 
 # ── Terminal Chat ─────────────────────────────────────────────────────────────

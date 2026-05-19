@@ -1,14 +1,14 @@
-// PicoClaw - Ultra-lightweight personal AI agent
+// qclaw - Ultra-lightweight personal AI agent
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 qclaw contributors
 
 package providers
 
 import (
 	"fmt"
 
-	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/laurenvil/Uno-QClaw/pkg/config"
 )
 
 // CreateProvider creates a provider based on the configuration.

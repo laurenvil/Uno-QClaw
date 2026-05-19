@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # qclaw-onboard.sh — First-run setup for QClaw on Arduino Uno Q.
 # Patches only the QClaw-relevant fields in config.json (token, allow_from).
-# Never calls 'picoclaw onboard' — that would overwrite our tuned config.
+# Never calls 'qclaw onboard' — that would overwrite our tuned config.
 set -euo pipefail
 
-PICOCLAW_HOME="${PICOCLAW_HOME:-$HOME/.picoclaw}"
-CONFIG="$PICOCLAW_HOME/config.json"
+QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
+CONFIG="$QCLAW_HOME/config.json"
 QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q6_K.gguf}"
 LLAMA_SERVER="${LLAMA_SERVER:-./yzma/lib/llama-server}"
 

@@ -12,12 +12,12 @@
 # compile/upload/camera/LED/I²C workflows use `make qclaw-agentic` instead.
 set -euo pipefail
 
-PICOCLAW_HOME="${PICOCLAW_HOME:-$HOME/.picoclaw}"
+QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
 QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf}"
 LLAMA_SERVER="${LLAMA_SERVER:-./yzma/lib/llama-server}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
-LLAMA_LOG="$PICOCLAW_HOME/llama-server.log"
-LLAMA_PID_FILE="$PICOCLAW_HOME/llama-server.pid"
+LLAMA_LOG="$QCLAW_HOME/llama-server.log"
+LLAMA_PID_FILE="$QCLAW_HOME/llama-server.pid"
 DIRECT_CHAT="${DIRECT_CHAT:-./scripts/qclaw-direct-chat.py}"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -37,8 +37,8 @@ if [ ! -f "$QCLAW_MODEL" ]; then
     exit 1
 fi
 
-if [ ! -f "$PICOCLAW_HOME/workspace/SOUL.md" ]; then
-    echo "Error: SOUL.md not found at $PICOCLAW_HOME/workspace/SOUL.md"
+if [ ! -f "$QCLAW_HOME/workspace/SOUL.md" ]; then
+    echo "Error: SOUL.md not found at $QCLAW_HOME/workspace/SOUL.md"
     echo "Run: make qclaw-setup"
     exit 1
 fi
