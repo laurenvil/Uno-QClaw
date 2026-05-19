@@ -2,7 +2,7 @@
 
 **QClaw** is an on-device agentic AI assistant for the Arduino Uno Q. It writes, compiles, and uploads Arduino sketches; captures camera frames; drives Linux-side LEDs; reports network state; and scans I²C buses — all running entirely on the board. No internet. No API keys. No cloud.
 
-Forked from [picoclaw](https://github.com/sipeed/picoclaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
+Forked from upstream [picoclaw](https://github.com/sipeed/picoclaw) — repo: [Uno-QClaw](https://github.com/laurenvil/Uno-QClaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
 
 QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
 
@@ -33,7 +33,7 @@ QClaw ships two execution paths sharing the same model, system prompt, and 15-sk
 ## Quick Start
 
 ```bash
-git clone https://github.com/laurenvil/UnoQClaw.git ~/ArduinoApps/QClaw
+git clone https://github.com/laurenvil/Uno-QClaw.git ~/ArduinoApps/QClaw
 cd ~/ArduinoApps/QClaw
 git submodule update --init --recursive
 
@@ -218,7 +218,7 @@ QClaw's skills framework, pre-router, and arduino tool are forward-compatible �
 ## Repository Layout
 
 ```
-UnoQClaw/
+Uno-QClaw/
 ├── cmd/qclaw/             # CLI entry point (Cobra)
 ├── pkg/
 │   ├── agent/                # Agent loop, context, pre-router, tool dispatch

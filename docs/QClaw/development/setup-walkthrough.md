@@ -27,7 +27,7 @@ Both paths share the same install, workspace, and skills tree. You pick the path
 ## Step 1: Clone and Initialize
 
 ```bash
-git clone https://github.com/laurenvil/QClaw.git ~/ArduinoApps/QClaw
+git clone https://github.com/laurenvil/Uno-QClaw.git ~/ArduinoApps/QClaw
 cd ~/ArduinoApps/QClaw
 git checkout qclaw
 git submodule update --init --recursive
