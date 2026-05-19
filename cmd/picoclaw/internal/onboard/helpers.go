@@ -33,17 +33,19 @@ func onboard() {
 	workspace := cfg.WorkspacePath()
 	createWorkspaceTemplates(workspace)
 
-	fmt.Printf("%s picoclaw is ready!\n", internal.Logo)
+	fmt.Printf("%s QClaw is ready!\n", internal.Logo)
 	fmt.Println("\nNext steps:")
 	fmt.Println("  1. Add your API key to", configPath)
 	fmt.Println("")
-	fmt.Println("     Recommended:")
-	fmt.Println("     - OpenRouter: https://openrouter.ai/keys (access 100+ models)")
-	fmt.Println("     - Ollama:     https://ollama.com (local, free)")
+	fmt.Println("     Recommended for Uno Q on-device inference:")
+	fmt.Println("     - llama-server (local):  http://127.0.0.1:8080/v1  (default)")
+	fmt.Println("     - OpenRouter (cloud):    https://openrouter.ai/keys")
+	fmt.Println("     - Ollama (local, free):  https://ollama.com")
 	fmt.Println("")
-	fmt.Println("     See README.md for 17+ supported providers.")
+	fmt.Println("     See README.md for the full list of supported providers.")
 	fmt.Println("")
 	fmt.Println("  2. Chat: picoclaw agent -m \"Hello!\"")
+	fmt.Println("  3. Or launch the agentic loop: make qclaw-agentic")
 }
 
 func createWorkspaceTemplates(workspace string) {

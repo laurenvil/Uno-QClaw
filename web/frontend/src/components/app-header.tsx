@@ -87,9 +87,10 @@ export function AppHeader() {
         <SidebarTrigger className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-9 w-9 items-center justify-center rounded-lg sm:hidden [&>svg]:size-5">
           <IconMenu2 />
         </SidebarTrigger>
-        <div className="hidden w-36 shrink-0 items-center sm:flex">
-          <Link to="/">
-            <img className="w-full" src="/logo_with_text.png" alt="Logo" />
+        <div className="hidden w-36 shrink-0 items-center gap-2 sm:flex">
+          <Link to="/" className="flex items-center gap-2">
+            <img className="h-9 w-9" src="/qclaw-logo.svg" alt="QClaw" />
+            <span className="text-base font-semibold tracking-tight">QClaw</span>
           </Link>
         </div>
       </div>
@@ -198,7 +199,7 @@ export function AppHeader() {
 
         {/* Docs Link */}
         <Button variant="ghost" size="icon" className="size-8" asChild>
-          <a href="https://docs.picoclaw.io" target="_blank" rel="noreferrer">
+          <a href="https://github.com/laurenvil/Uno-QClaw" target="_blank" rel="noreferrer">
             <IconBook className="size-4.5" />
           </a>
         </Button>

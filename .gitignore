@@ -47,6 +47,9 @@ docs/QClaw/hackster-release-article.md
 # Local agent instructions (not published)
 CLAUDE.md
 
+# Local development notes (not published)
+docs/QClaw/Development/
+
 # Editors
 .vscode/
 .idea/

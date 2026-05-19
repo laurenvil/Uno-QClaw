@@ -1,8 +1,8 @@
-// PicoClaw - Ultra-lightweight personal AI agent
-// Inspired by and based on nanobot: https://github.com/HKUDS/nanobot
+// QClaw - On-device agentic AI assistant for Arduino Uno Q
+// Forked from PicoClaw: https://github.com/sipeed/picoclaw
 // License: MIT
 //
-// Copyright (c) 2026 PicoClaw contributors
+// Copyright (c) 2026 QClaw contributors
 
 package main
 
@@ -27,7 +27,7 @@ import (
 )
 
 func NewPicoclawCommand() *cobra.Command {
-	short := fmt.Sprintf("%s picoclaw - Personal AI Assistant v%s\n\n", internal.Logo, config.GetVersion())
+	short := fmt.Sprintf("%s QClaw - On-Device AI for Arduino Uno Q v%s\n\n", internal.Logo, config.GetVersion())
 
 	cmd := &cobra.Command{
 		Use:     "picoclaw",
@@ -55,12 +55,12 @@ const (
 	colorBlue = "\033[1;38;2;62;93;185m"
 	colorRed  = "\033[1;38;2;213;70;70m"
 	banner    = "\r\n" +
-		colorBlue + "██████╗ ██╗ ██████╗ ██████╗ " + colorRed + " ██████╗██╗      █████╗ ██╗    ██╗\n" +
-		colorBlue + "██╔══██╗██║██╔════╝██╔═══██╗" + colorRed + "██╔════╝██║     ██╔══██╗██║    ██║\n" +
-		colorBlue + "██████╔╝██║██║     ██║   ██║" + colorRed + "██║     ██║     ███████║██║ █╗ ██║\n" +
-		colorBlue + "██╔═══╝ ██║██║     ██║   ██║" + colorRed + "██║     ██║     ██╔══██║██║███╗██║\n" +
-		colorBlue + "██║     ██║╚██████╗╚██████╔╝" + colorRed + "╚██████╗███████╗██║  ██║╚███╔███╔╝\n" +
-		colorBlue + "╚═╝     ╚═╝ ╚═════╝ ╚═════╝ " + colorRed + " ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝\n " +
+		colorBlue + "██╗   ██╗ ███╗   ██╗  ██████╗   ██████╗ " + colorRed + " ██████╗██╗      █████╗ ██╗    ██╗\n" +
+		colorBlue + "██║   ██║ ████╗  ██║ ██╔═══██╗ ██╔═══██╗" + colorRed + "██╔════╝██║     ██╔══██╗██║    ██║\n" +
+		colorBlue + "██║   ██║ ██╔██╗ ██║ ██║   ██║ ██║   ██║" + colorRed + "██║     ██║     ███████║██║ █╗ ██║\n" +
+		colorBlue + "██║   ██║ ██║╚██╗██║ ██║   ██║ ██║▄▄ ██║" + colorRed + "██║     ██║     ██╔══██║██║███╗██║\n" +
+		colorBlue + "╚██████╔╝ ██║ ╚████║ ╚██████╔╝ ╚██████╔╝" + colorRed + "╚██████╗███████╗██║  ██║╚███╔███╔╝\n" +
+		colorBlue + " ╚═════╝  ╚═╝  ╚═══╝  ╚═════╝   ╚══▀▀═╝ " + colorRed + " ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝\n " +
 		"\033[0m\r\n"
 )
 
