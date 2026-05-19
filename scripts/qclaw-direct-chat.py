@@ -203,7 +203,7 @@ def post_completion(model: str, system_prompt: str, user_message: str) -> dict:
 
 BANNER = """
   ┌───────────────────────────────────────────────┐
-  │  🧘  S E N S A I — Direct Server               │
+  │  🧘  Q C L A W — Direct Server                 │
   │      Arduino Q&A Assistant (fast path)         │
   │                                                │
   │  Pre-router + direct API · no tools · no loop  │

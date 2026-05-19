@@ -114,7 +114,7 @@ func TestIsBotMentioned(t *testing.T) {
 			name: "formatted mention href matrix.to encoded",
 			msg: event.MessageEventContent{
 				Body:          "hello bot",
-				FormattedBody: `<a href="https://matrix.to/#/%40picoclaw%3Amatrix.org">QClaw</a> hello`,
+				FormattedBody: `<a href="https://matrix.to/#/%40qclaw%3Amatrix.org">QClaw</a> hello`,
 			},
 			want: true,
 		},

@@ -13,7 +13,7 @@ func TestNewGatewayCommand(t *testing.T) {
 	require.NotNil(t, cmd)
 
 	assert.Equal(t, "gateway", cmd.Use)
-	assert.Equal(t, "Start qclaw gateway", cmd.Short)
+	assert.Equal(t, "Start QClaw gateway", cmd.Short)
 
 	assert.Len(t, cmd.Aliases, 1)
 	assert.True(t, cmd.HasAlias("g"))

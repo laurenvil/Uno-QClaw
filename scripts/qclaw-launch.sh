@@ -130,7 +130,7 @@ fi
 
 echo ""
 echo "  ┌───────────────────────────────────────────┐"
-echo "  │  🧘  S  E  N  S  A  I                    │"
+echo "  │  🧘  Q  C  L  A  W                        │"
 echo "  │      Arduino AI Assistant                  │"
 echo "  │                                            │"
 echo "  │  Type your question at 'You:' and press    │"
