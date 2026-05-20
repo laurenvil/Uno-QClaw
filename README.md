@@ -114,32 +114,7 @@ The agent loop's response-format scaffolding contributes real quality on complex
 
 QClaw's agentic loop orchestrates the full sketch lifecycle — generate, compile, flash, observe — across the Arduino Uno Q's dual-silicon topology, with the MPU driving the loop and the MCU executing the resulting firmware:
 
-```mermaid
-graph TD
-    subgraph MPU [MPU Side: Qualcomm QRB2210]
-        Linux[Debian Linux OS]
-        QClaw[QClaw Agent pkg/tools/arduino.go]
-        Cli[arduino-cli]
-        Ocd[OpenOCD /opt/openocd]
-    end
-
-    subgraph SWD [Interconnect: SWD over GPIO]
-        Gpios[linuxgpiod driver]
-    end
-
-    subgraph MCU [MCU Side: STM32U585]
-        Zephyr[Zephyr RTOS Bootloader]
-        Sketch[User Sketch Partition 0x08100000]
-        Matrix[Monochrome Blue LED Matrix 13x8]
-    end
-
-    QClaw -->|1. Generate .ino| Cli
-    Cli -->|2. Export .elf-zsk.bin| QClaw
-    QClaw -->|3. Invoke Flash Command| Ocd
-    Ocd -->|4. Flash Binary| Gpios
-    Gpios -->|5. SWD Protocol| Sketch
-    Sketch -->|6. Control Hardware| Matrix
-```
+<img width="2816" height="1536" alt="QClaw-Architecture" src="https://github.com/user-attachments/assets/f6adf688-fd3d-4dd0-ba3b-59b933478e47" />
 
 ### MPU Side (Qualcomm QRB2210)
 - **Processor:** 4 × ARM Cortex-A53 @ 2.0 GHz
