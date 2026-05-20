@@ -1,3 +1,12 @@
+```
+██╗   ██╗ ███╗   ██╗  ██████╗   ██████╗  ██████╗██╗      █████╗ ██╗    ██╗
+██║   ██║ ████╗  ██║ ██╔═══██╗ ██╔═══██╗██╔════╝██║     ██╔══██╗██║    ██║
+██║   ██║ ██╔██╗ ██║ ██║   ██║ ██║   ██║██║     ██║     ███████║██║ █╗ ██║
+██║   ██║ ██║╚██╗██║ ██║   ██║ ██║▄▄ ██║██║     ██║     ██╔══██║██║███╗██║
+╚██████╔╝ ██║ ╚████║ ╚██████╔╝ ╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝
+ ╚═════╝  ╚═╝  ╚═══╝  ╚═════╝   ╚══▀▀═╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+```
+
 # QClaw
 
 **QClaw** is an on-device agentic AI assistant for the Arduino Uno Q. It writes, compiles, and uploads Arduino sketches; captures camera frames; drives Linux-side LEDs; reports network state; and scans I²C buses — all running entirely on the board. No internet. No API keys. No cloud.
