@@ -108,6 +108,56 @@ The agent loop's response-format scaffolding contributes real quality on complex
 
 ---
 
+## Split-Processor Architecture
+
+The communication and deployment model of the Arduino Uno Q is governed by its dual-silicon topology:
+
+```mermaid
+graph TD
+    subgraph MPU [MPU Side: Qualcomm QRB2210]
+        Linux[Debian Linux OS]
+        QClaw[QClaw Agent pkg/tools/arduino.go]
+        Cli[arduino-cli]
+        Ocd[OpenOCD /opt/openocd]
+    end
+
+    subgraph SWD [Interconnect: SWD over GPIO]
+        Gpios[linuxgpiod driver]
+    end
+
+    subgraph MCU [MCU Side: STM32U585]
+        Zephyr[Zephyr RTOS Bootloader]
+        Sketch[User Sketch Partition 0x08100000]
+        Matrix[Monochrome Blue LED Matrix 13x8]
+    end
+
+    QClaw -->|1. Generate .ino| Cli
+    Cli -->|2. Export .elf-zsk.bin| QClaw
+    QClaw -->|3. Invoke Flash Command| Ocd
+    Ocd -->|4. Flash Binary| Gpios
+    Gpios -->|5. SWD Protocol| Sketch
+    Sketch -->|6. Control Hardware| Matrix
+```
+
+### MPU Side (Qualcomm QRB2210)
+- **Processor:** 4 × ARM Cortex-A53 @ 2.0 GHz
+- **Operating System:** Debian Linux (kernel 6.16)
+- **Role:** Host environment running the `llama-server` inference engine, `qclaw` agent framework, local compilation toolchain, and debugging suites.
+
+### MCU Side (STM32U585)
+- **Processor:** ARM Cortex-M33 @ 160 MHz
+- **Operating System:** Zephyr RTOS + Arduino Core (`arduino:zephyr:unoq`)
+- **Role:** Real-time physical I/O execution, sensor reading, motor control, and driving the 13 × 8 blue LED matrix.
+
+### Hardware Interconnect
+The MPU and MCU do not communicate over standard external interfaces like USB or network cables. Instead, they share:
+1. **Serial Bridge (UART/RPC):** For runtime messaging and remote procedure calls.
+2. **SWD (Serial Wire Debug) Interface:** Connected directly via MPU GPIO pins using a `linuxgpiod` driver interface. This SWD connection allows the MPU to halt, erase, program, and reset the MCU's flash memory.
+
+See [`docs/QClaw/mcu-communication-whitepaper.md`](docs/QClaw/mcu-communication-whitepaper.md) for the full compile/flash pipeline, the `0x8100000` address fix, and the comparison with Arduino's `remoteocd` utility.
+
+---
+
 ## Architecture
 
 ```
