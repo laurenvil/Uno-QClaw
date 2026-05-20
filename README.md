@@ -110,7 +110,7 @@ The agent loop's response-format scaffolding contributes real quality on complex
 
 ## Split-Processor Architecture
 
-The communication and deployment model of the Arduino Uno Q is governed by its dual-silicon topology:
+QClaw's agentic loop orchestrates the full sketch lifecycle — generate, compile, flash, observe — across the Arduino Uno Q's dual-silicon topology, with the MPU driving the loop and the MCU executing the resulting firmware:
 
 ```mermaid
 graph TD
