@@ -1,3 +1,5 @@
+<img width="2604" height="1600" alt="QClaw-Branded" src="https://github.com/user-attachments/assets/b9af9bc4-77a6-4321-af4c-b053ff77335a" />
+
 <div align="center">
 <pre>
 ██╗   ██╗ ███╗   ██╗  ██████╗   ██████╗  ██████╗██╗      █████╗ ██╗    ██╗
