@@ -22,9 +22,9 @@ QClaw ships two execution paths sharing the same model, system prompt, and 15-sk
 - **Agentic** — agent loop + 23-rule pre-router + 8 tools. End-to-end compile/flash, camera capture, MPU LED control, network diagnostics, I²C bus scan.
 - **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills.
 
-https://github.com/laurenvil/Uno-QClaw/blob/main/docs/QClaw/The_QClaw_Architecture_Video.mp4
 
 
+https://github.com/user-attachments/assets/05a0e896-7eb6-4bb8-b494-1abc26eec687
 
 
 
