@@ -65,3 +65,6 @@ dist/
 !web/backend/dist/
 web/backend/dist/*
 !web/backend/dist/.gitkeep
+
+# Local-only verification reports (not pushed to remote)
+docs/QClaw/fork-verification-*.md
