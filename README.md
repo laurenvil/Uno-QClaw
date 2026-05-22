@@ -15,7 +15,7 @@
 
 **QClaw** is an on-device agentic AI assistant for the Arduino Uno Q. It writes, compiles, and uploads Arduino sketches; captures camera frames; drives Linux-side LEDs; reports network state; and scans I²C buses — all running entirely on the board. No internet. No API keys. No cloud.
 
-Forked from upstream [picoclaw](https://github.com/sipeed/picoclaw) — repo: [Uno-QClaw](https://github.com/laurenvil/Uno-QClaw) · inference via [yzma](https://github.com/hybridgroup/yzma) · default model: Qwen3.5-0.8B Q4_0
+Forked from upstream [picoclaw](https://github.com/sipeed/picoclaw) — repo: [Uno-QClaw](https://github.com/laurenvil/Uno-QClaw) · inference via the embedded [`engines/llamacli`](engines/llamacli) submodule (precompiled `assix/Arduino-UnoQ-Optimized-Llama-CLI`) · default model: Qwen3.5-0.8B Q4_0
 
 QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
 
@@ -48,10 +48,9 @@ QClaw ships two execution paths sharing the same model, system prompt, and 15-sk
 ```bash
 git clone https://github.com/laurenvil/Uno-QClaw.git ~/ArduinoApps/QClaw
 cd ~/ArduinoApps/QClaw
-git submodule update --init --recursive
 
-# Download the inference engine
-cd yzma && make download-llama.cpp && cd ..
+# Pull the precompiled llama-cli (mpu/llama-cli aarch64 ELF, ~12 MB)
+git submodule update --init --recursive engines/llamacli
 
 # Download the model (~490 MB for Q4_0)
 mkdir -p ~/models
@@ -61,18 +60,17 @@ wget -O ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
 # Build, install arduino-cli, configure (one time)
 make qclaw-install
 
-# Start a session — pick a path
+# Start a session
 make qclaw-agentic    # full agent loop + 8 tools (compile/upload/camera/sysfs_led/network/i2cdetect)
-make qclaw-direct     # pre-router + direct API (fast Q&A, no tools)
 ```
 
-`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`.
+`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`. Note that on the `qclaw-llamaCLI` track the *direct* path is disabled — see [Two Execution Paths](#two-execution-paths) below.
 
 ---
 
 ## Two Execution Paths
 
-Both paths share the same llama-server backend, the same `SOUL.md`, and the same 23-rule pre-router. They differ only in what surrounds the LLM call.
+Both paths share the same `engines/llamacli` engine, the same `SOUL.md`, and the same 23-rule pre-router. They differ only in what surrounds the LLM call.
 
 | Aspect | `make qclaw-agentic` | `make qclaw-direct` |
 |---|---|---|
@@ -87,6 +85,8 @@ Both paths share the same llama-server backend, the same `SOUL.md`, and the same
 | I²C bus scan | ✅ via `i2cdetect` tool | ❌ |
 | Telegram gateway | ✅ | ❌ (terminal only) |
 | Best for | Hardware actions, multi-step workflows | Fast factual Q&A across all 15 skills |
+
+> **Note (qclaw-llamaCLI track):** the direct path's Python REPL (`qclaw-direct-chat.py`) was a thin OpenAI-compatible HTTP client pointed at the now-retired `llama-server`. With the llama-cli provider spawning a subprocess per `Chat()` call there is no HTTP endpoint for it to talk to, so `make qclaw-direct` is disabled on this track ([`scripts/qclaw-launch-direct.sh`](scripts/qclaw-launch-direct.sh) prints a redirect and exits). Use `make qclaw-agentic` for everything.
 
 The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. The pre-router alone is necessary but not sufficient for harder prompts at 0.8B scale.
 
@@ -119,7 +119,7 @@ QClaw's agentic loop orchestrates the full sketch lifecycle — generate, compil
 ### MPU Side (Qualcomm QRB2210)
 - **Processor:** 4 × ARM Cortex-A53 @ 2.0 GHz
 - **Operating System:** Debian Linux (kernel 6.16)
-- **Role:** Host environment running the `llama-server` inference engine, `qclaw` agent framework, local compilation toolchain, and debugging suites.
+- **Role:** Host environment running the `qclaw` agent framework (which spawns the precompiled `engines/llamacli/mpu/llama-cli` as a subprocess per inference call), local compilation toolchain, and debugging suites.
 
 ### MCU Side (STM32U585)
 - **Processor:** ARM Cortex-M33 @ 160 MHz
@@ -158,18 +158,23 @@ See [`docs/QClaw/mcu-communication-whitepaper.md`](docs/QClaw/mcu-communication-
 │                                                                │
 │  Direct path                                                   │
 │  ┌────────────────────────────────────────────────────┐       │
-│  │ qclaw-direct-chat.py (terminal REPL)                │       │
-│  │   ├── pre-router (same 23 rules, Python port)       │       │
-│  │   └── single LLM call · no tools · no loop          │       │
+│  │ qclaw-direct-chat.py (DISABLED on qclaw-llamaCLI)   │       │
+│  │   was a Python REPL that POSTed to llama-server's   │       │
+│  │   /v1/chat/completions; with no server to talk to,  │       │
+│  │   the script exits with a redirect to `qclaw-agentic`│      │
 │  └────────────────────────────────────────────────────┘       │
 │                                                                │
-│                       │ HTTP loopback :8080                    │
-│  llama-server  ◄──────┘                                        │
-│    └── yzma/  (submodule, llama.cpp FFI)                       │
+│                                fork+exec per Chat()            │
+│  pkg/providers/llamacli ──────►  engines/llamacli/mpu/llama-cli │
+│     (Go subprocess driver)         (assix precompiled aarch64)  │
+│                                                                │
+│  engines/llamacli/  (submodule → assix/Arduino-UnoQ-Optimized-  │
+│                      Llama-CLI; ships mpu/llama-cli + llama.cpp │
+│                      source unused at runtime)                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-The pre-router (`pkg/agent/skill_preload.go`, mirrored for the direct path in `scripts/qclaw-direct-chat.py`) scans the user message against 23 keyword regex rules spanning 15 skills. Each match inlines the corresponding `SKILL.md` and reference files into the system prompt before the LLM call — the model never has to call `read_file` for known skill content.
+The pre-router (`pkg/agent/skill_preload.go`) scans the user message against 23 keyword regex rules spanning 15 skills. Each match inlines the corresponding `SKILL.md` and reference files into the system prompt before the LLM call — the model never has to call `read_file` for known skill content.
 
 | Domain | Skills | Sample triggers |
 |---|---|---|
@@ -182,25 +187,27 @@ The pre-router (`pkg/agent/skill_preload.go`, mirrored for the direct path in `s
 
 The `arduino` tool compiles via `arduino-cli`, then flashes via OpenOCD directly to the STM32U585 sketch partition at `0x8100000`. (The pre-installed `arduino-flash` wrapper hardcodes `0x80F0000`, which lands in a reserved area near the end of bank 1 and never executes — see `docs/QClaw/whitepaper.md` for the root-cause analysis.)
 
-Everything runs locally over `127.0.0.1:8080`.
+Everything runs locally as a Go subprocess driving the precompiled `mpu/llama-cli` — no HTTP loopback, no persistent server, no port to keep alive across requests.
 
 ---
 
 ## Benchmarks (Arduino Uno Q)
 
-Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `--ctx-size 8192 --parallel 1 --reasoning-budget 800` · `/no_think` active · t=0.3. Walltimes are full end-to-end (cold prefill + decode) on a fresh server.
+Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `-c 2048 -t 4 --temp 0.0 --reasoning off` · subprocess per `Chat()`. See [`docs/GPU/benchmark-results.md`](docs/GPU/benchmark-results.md) for the full V1 benchmark methodology and raw logs.
 
-### Throughput & resource footprint
+### Throughput & resource footprint (warm cache)
 
 | Metric | Value |
 |---|---|
-| Decode throughput (0.8B Q4_0) | ~8 tok/s |
-| Model RAM (0.8B Q4_0, mlocked) | ~490 MB |
-| KV cache (8192 ctx, q8_0 K+V) | ~120 MB |
-| Total llama-server RSS | ~1.3 GB |
-| Boot-to-ready (cold model load) | ~6 s |
-| Time to first token (warm KV) | ~1 s |
-| Time to first token (cold prefill, 20K-char prompt) | ~25 s |
+| Prompt processing (0.8B Q4_0) | **10.6 tok/s** |
+| Decode throughput (short ≤ n=64, 0.8B Q4_0) | **8.8 tok/s** |
+| Decode throughput (sustained n=128, 0.8B Q4_0) | ~4.8 tok/s |
+| 64-tok wall (warm-cache `Chat()`) | 10.34 s |
+| Cold-start `Chat()` (mmap GGUF + grammar compile + 1 tok) | 12.17 s |
+| Model RAM (0.8B Q4_0, mmap) | ~490 MB |
+| Per-`Chat()` `llama-cli` RSS peak | ~1.1 GB (model + KV + grammar tables) |
+
+These numbers replace the older yzma `llama-server` baseline (`pp=5.37 / tg=3.69 t/s` on the same model). The CLI path is roughly **2× faster** end-to-end on warm-cache short interactions thanks to a more recent llama.cpp build (`b9099` vs `9127`) and the elimination of the HTTP round trip and chat-template re-parse. Decode rate at long sequences converges back to the bandwidth-limited ~5 t/s regime that the LPDDR4X imposes on this SoC.
 
 ### Per-prompt walltime — Agentic vs Direct
 
@@ -263,7 +270,9 @@ Uno-QClaw/
 │   ├── channels/             # Telegram, terminal, IRC, Matrix, ...
 │   ├── providers/            # LLM provider adapters (OpenAI-compat, Anthropic, ...)
 │   └── tools/                # arduino, camera, sysfs_led, network, i2cdetect, filesystem
-├── yzma/                     # Submodule → hybridgroup/yzma (llama.cpp FFI)
+├── engines/llamacli/         # Submodule → assix/Arduino-UnoQ-Optimized-Llama-CLI
+│   ├── mpu/llama-cli         #   precompiled aarch64 ELF (assix, llama.cpp b9099)
+│   └── llama.cpp/            #   source tree (unused at runtime)
 ├── config/qclaw.config.json  # Runtime config template
 ├── workspace/
 │   ├── SOUL.md               # System prompt / agent persona
@@ -287,11 +296,14 @@ Uno-QClaw/
 | Document | Description |
 |---|---|
 | `docs/QClaw/development/setup-walkthrough.md` | Step-by-step from a fresh Uno Q to a running QClaw |
+| `docs/QClaw/development/launch-and-debug.md` | Launching and debugging the llama-cli provider end-to-end |
 | `docs/QClaw/development/architecture-study-bible.md` | Dual-processor architecture, pin tables, voltage rules, data paths |
 | `docs/QClaw/development/UnoQ-datasheet.pdf` | Official Arduino Uno Q hardware datasheet |
 | `docs/QClaw/whitepaper.md` | Architecture and evaluation whitepaper |
 | `docs/QClaw/capability-integration.md` | Skill, reference, and tool integration record |
 | `docs/QClaw/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
+| `docs/GPU/llama-cli-provider-whitepaper.md` | Why and how QClaw swapped yzma `llama-server` for `engines/llamacli` |
+| `docs/GPU/benchmark-results.md` | V1 benchmark methodology and numbers backing the table above |
 
 ---
 
@@ -302,13 +314,13 @@ Uno-QClaw/
 git fetch upstream
 git merge upstream/main
 
-# Update yzma submodule
-git submodule update --remote yzma
-git add yzma && git commit -m "chore: update yzma submodule"
+# Update engines/llamacli submodule (assix's precompiled llama-cli)
+git submodule update --remote engines/llamacli
+git add engines/llamacli && git commit -m "chore: bump engines/llamacli submodule"
 ```
 
 ---
 
 ## License
 
-picoclaw: MIT · yzma: Apache-2.0
+picoclaw: MIT · assix/Arduino-UnoQ-Optimized-Llama-CLI (`engines/llamacli`): MIT

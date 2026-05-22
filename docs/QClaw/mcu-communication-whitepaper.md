@@ -49,7 +49,7 @@ graph TD
 ### 1.1 MPU Side (Qualcomm QRB2210)
 - **Processor:** 4 × ARM Cortex-A53 @ 2.0 GHz
 - **Operating System:** Debian Linux (kernel 6.16)
-- **Role:** Host environment running the `llama-server` inference engine, `qclaw` agent framework, local compilation toolchain, and debugging suites.
+- **Role:** Host environment running the `qclaw` agent framework, local compilation toolchain, and debugging suites. Inference is in-process: `pkg/providers/llamacli` spawns the precompiled `engines/llamacli/mpu/llama-cli` (assix) as a subprocess per `Chat()`.
 
 ### 1.2 MCU Side (STM32U585)
 - **Processor:** ARM Cortex-M33 @ 160 MHz

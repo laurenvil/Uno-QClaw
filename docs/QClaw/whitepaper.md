@@ -41,7 +41,7 @@ The Arduino Uno Q has a split-processor architecture that is critical to underst
 - 4 GB LPDDR4X
 - Adreno 702 GPU (OpenCL 2.0)
 - Debian Linux, kernel 6.16
-- Runs llama.cpp (`llama-server`), the qclaw gateway, and all agent logic
+- Runs the qclaw gateway and all agent logic; spawns the precompiled `engines/llamacli/mpu/llama-cli` (assix, llama.cpp `b9099`) as a subprocess per `Chat()` call
 
 **MCU side — STM32U585:**
 - ARM Cortex-M33 @ 160 MHz
@@ -64,7 +64,12 @@ qclaw gateway  (pkg/channels/)
 AgentLoop  (pkg/agent/loop.go)
     ├── ContextBuilder.PreloadSkillsForMessage()  ← pre-router (v3)
     ├── ContextBuilder.BuildMessages()            ← system prompt assembly
-    ├── FallbackChain provider (pkg/providers/)   → llama-server HTTP
+    ├── FallbackChain provider (pkg/providers/)   → llamacli.Provider.Chat()
+    │                                                 │
+    │                                                 ▼
+    │                            fork+exec engines/llamacli/mpu/llama-cli
+    │                            (one subprocess per Chat(), stdout parsed back
+    │                             into LLMResponse via GBNF-constrained envelope)
     └── ToolRegistry.ExecuteWithContext()
             ├── read_file / write_file / list_dir  (pkg/tools/filesystem.go)
             └── arduino                            (pkg/tools/arduino.go)
@@ -72,7 +77,7 @@ AgentLoop  (pkg/agent/loop.go)
                     └── openocd -f openocd_gpiod.cfg -c "flash write_image ... 0x8100000"
 ```
 
-**LLM inference:** `llama-server` (llama.cpp b9127) serves an OpenAI-compatible HTTP API at `127.0.0.1:8080/v1`. The qclaw gateway uses the `openai_compat` provider pointed at this endpoint.
+**LLM inference:** the precompiled `engines/llamacli/mpu/llama-cli` (assix's `Arduino-UnoQ-Optimized-Llama-CLI@aca9a0f`, llama.cpp build `b9099-5d5d2e15d`) is invoked as a subprocess once per `Chat()` request by `pkg/providers/llamacli`. The provider renders ChatML, attaches a hand-written GBNF that constrains output to either a `{"text":"..."}` or `{"tool_call":{...}}` envelope, captures stdout, and decodes the envelope back into `LLMResponse`. No HTTP boundary, no persistent server, no port — the agent and the inference engine share the same process tree. The pivot from yzma `llama-server` to this CLI provider is documented in [`docs/GPU/llama-cli-provider-whitepaper.md`](../GPU/llama-cli-provider-whitepaper.md); benchmark numbers in [`docs/GPU/benchmark-results.md`](../GPU/benchmark-results.md).
 
 **Workspace:** `~/.qclaw/workspace/` contains `SOUL.md` (system prompt), `IDENTITY.md`, and a `skills/` tree that the pre-router reads at request time.
 
@@ -159,9 +164,9 @@ The primary production model:
 |---|---|---|---|---|---|---|
 | Qwen3.5-0.8B-Q4_0 | `Qwen_Qwen3.5-0.8B-Q4_0.gguf` | 752M | Q4_0 | 490 MB | ~8 tok/s | Primary production model |
 
-Server flags (consistent across all runs): `--ctx-size 8192 --parallel 1 --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800`
+**Run 1–7 inference path (historical, yzma `llama-server`):** `--ctx-size 8192 --parallel 1 --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800` against `yzma/lib/llama-server` (llama.cpp build `9127`). The `--reasoning-budget 800` cap limits `<think>` token spending; `SOUL.md` opens with `/no_think` to suppress Qwen3's chain-of-thought entirely in compliant configurations.
 
-The `--reasoning-budget 800` cap limits `<think>` token spending. The first line of `SOUL.md` is `/no_think`, which suppresses Qwen3's chain-of-thought entirely in compliant configurations.
+**Current inference path (`qclaw-llamaCLI` track):** the same model is now driven by `pkg/providers/llamacli` via the precompiled `engines/llamacli/mpu/llama-cli` (assix, llama.cpp build `b9099-5d5d2e15d`). The provider invokes the binary with `-c 2048 -t 4 --temp 0.0 --reasoning off -st --no-warmup` per `Chat()` and re-parses the GBNF-constrained stdout envelope. The Run 1–7 numbers in §4 below are still the right *qualitative* signal (the model behavior they measure didn't change), but absolute walltimes shifted — see [`docs/GPU/benchmark-results.md`](../GPU/benchmark-results.md) for the warm-cache numbers under the CLI provider (`pp=10.6 t/s`, `tg=8.8 t/s` for short n=64 decode, ~2× faster than the yzma `llama-server` baseline end-to-end on short interactions).
 
 ### 3.3 Benchmark Prompts
 

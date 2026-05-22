@@ -1,7 +1,20 @@
 
-# 🦐 PicoClaw Roadmap
+# 🦐 QClaw Roadmap
 
 > **Vision**: To build the ultimate lightweight, secure, and fully autonomous AI Agent infrastructure.automate the mundane, unleash your creativity
+
+> **QClaw fork addendum (Uno Q track):** The items below describe upstream
+> picoclaw's vision. QClaw's near-term focus is the Arduino Uno Q / Ventuno Q
+> embedded path. The current production inference stack is the new
+> **llama-cli provider** (`pkg/providers/llamacli`) driving the precompiled
+> `engines/llamacli/mpu/llama-cli` (assix). This replaced the prior yzma
+> `llama-server` HTTP path on the `qclaw-llamaCLI` branch and is ~2× faster
+> end-to-end on warm-cache short interactions. Sibling tracks: the
+> `QClaw-Client-V2` branch wires real Adreno 702 GPU paths (OpenCL via the
+> Wang `opencl/nvidia` branch with v4.4 surgical patches, and Vulkan via the
+> Sensai-Dev v5 build); the `QClaw-GPU-CLI` branch carries the broader
+> GPU experiment notes. See [`README.md`](README.md) §Quick Start for the
+> current developer entry point.
 
 ---
 
@@ -43,7 +56,7 @@
 
 * **Provider**
   * [**Architecture Upgrade**](https://github.com/laurenvil/Uno-QClaw/issues/283): Refactor from "Vendor-based" to "Protocol-based" classification (e.g., OpenAI-compatible, Ollama-compatible). *(Status: In progress by @Daming, ETA 5 days)*
-  * **Local Models**: Deep integration with **Ollama**, **vLLM**, **LM Studio**, and **Mistral** (local inference).
+  * **Local Models**: Deep integration with **Ollama**, **vLLM**, **LM Studio**, and **Mistral** (local inference). *(QClaw Uno Q track: in-tree `pkg/providers/llamacli` already drives the precompiled `engines/llamacli/mpu/llama-cli` as a subprocess per `Chat()` — see [`docs/GPU/llama-cli-provider-whitepaper.md`](docs/GPU/llama-cli-provider-whitepaper.md).)*
   * **Online Models**: Continued support for frontier closed-source models.
 
 

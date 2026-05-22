@@ -1,4 +1,4 @@
-.PHONY: all build install uninstall clean help test qclaw qclaw-agentic qclaw-direct qclaw-install qclaw-setup qclaw-stop qclaw-onboard qclaw-tui qclaw-arduino-setup
+.PHONY: all build install uninstall clean help test qclaw qclaw-agentic qclaw-direct qclaw-install qclaw-setup qclaw-stop qclaw-onboard qclaw-tui qclaw-arduino-setup qclaw-doctor qclaw-bench
 
 # Build variables
 BINARY_NAME=qclaw
@@ -258,6 +258,49 @@ qclaw-tui:
 	@$(GO) build $(GOFLAGS) -o $(BUILD_DIR)/qclaw-launcher-tui ./cmd/qclaw-launcher-tui
 	@echo "Launching QClaw TUI..."
 	@$(BUILD_DIR)/qclaw-launcher-tui
+
+## qclaw-doctor: Run the five pre-flight checks from
+##                 docs/QClaw/development/launch-and-debug.md §2 — binary
+##                 present + executable, model present, and a smoke `Chat()`
+##                 through the actual binary. Exits non-zero on the first
+##                 failure so it's safe to chain in scripts.
+qclaw-doctor:
+	@printf '\n== 2.1 binary present + executable ==\n'
+	@if [ ! -x ./engines/llamacli/mpu/llama-cli ]; then \
+		echo "FAIL: engines/llamacli/mpu/llama-cli missing or not executable"; \
+		echo "Recovery: git submodule update --init --recursive engines/llamacli && chmod +x engines/llamacli/mpu/llama-cli"; \
+		exit 1; \
+	fi
+	@./engines/llamacli/mpu/llama-cli --version 2>&1 | grep -E "^version|^built" | head -2
+	@printf '\n== 2.2 model present ==\n'
+	@if [ ! -f "$(QCLAW_MODEL)" ]; then \
+		echo "FAIL: model not found at $(QCLAW_MODEL)"; \
+		echo "Recovery: see docs/QClaw/development/setup-walkthrough.md §3"; \
+		exit 1; \
+	fi
+	@ls -la "$(QCLAW_MODEL)" | awk '{print $$5, $$9}'
+	@command -v vmtouch >/dev/null 2>&1 && vmtouch "$(QCLAW_MODEL)" 2>/dev/null | grep -E 'Resident Pages|Elapsed' || echo "  (install vmtouch to see page-cache residency)"
+	@printf '\n== 2.3 binary can decode end-to-end ==\n'
+	@./engines/llamacli/mpu/llama-cli \
+	  -m "$(QCLAW_MODEL)" \
+	  -p "Reply with one word: pong" \
+	  -st --no-warmup --reasoning off \
+	  -c 2048 -t 4 -n 8 --temp 0.0 2>&1 | grep -E "Prompt: |Generation: |Unsupported GPU|Failed|drop unsupported|^pong" | head -5
+	@printf '\n== 2.5 provider integration test ==\n'
+	@GOTOOLCHAIN=auto $(GO) test -tags=integration -run TestIntegration_LlamaCLIText -count=1 -timeout 5m ./pkg/providers/llamacli/ 2>&1 | tee /tmp/qclaw-doctor.log | tail -4
+	@if grep -q "^FAIL\|^ok" /tmp/qclaw-doctor.log; then \
+		grep -q "^ok" /tmp/qclaw-doctor.log && printf '\nqclaw-doctor: all checks passed.\n' || { echo; echo "qclaw-doctor: integration test FAILED — see /tmp/qclaw-doctor.log"; exit 1; }; \
+	else \
+		echo; echo "qclaw-doctor: integration test did not run (toolchain/setup issue) — see /tmp/qclaw-doctor.log"; exit 1; \
+	fi
+
+## qclaw-bench: Run scripts/bench-llamacli-provider.sh — the V1 reproducer.
+##                Records direct-binary t/s, cold-start cost, and Go-provider
+##                end-to-end walltime to docs/GPU/benchmark-raw.txt. Total
+##                runtime ~80 s on Uno Q. See docs/GPU/benchmark-results.md
+##                for the curated numbers behind this target.
+qclaw-bench:
+	@bash scripts/bench-llamacli-provider.sh
 
 ## qclaw-stop: Stop background gateway process. (No long-running llama-server
 ##              under the llama-cli provider: each Chat() spawns a one-shot

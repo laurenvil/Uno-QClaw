@@ -36,7 +36,7 @@ The Arduino Uno Q is not a single computer. It is two computers on one board tha
 │  │  ► Python programs   │                   │          │  │
 │  │  ► AI inference      │                   │► Sketches│  │
 │  │  ► OpenCV / web      │                   │► GPIO    │  │
-│  │  ► llama-server      │                   │► PWM/ADC │  │
+│  │  ► llama-cli (assix) │                   │► PWM/ADC │  │
 │  └──────────────────────┘                   └──────────┘  │
 │                                                             │
 │  1.8 V I/O domain (MPU)        3.3 V I/O domain (MCU)      │
@@ -56,7 +56,7 @@ The Arduino Uno Q is not a single computer. It is two computers on one board tha
 | I/O voltage | **1.8 V** (NOT accessible from Arduino sketches) |
 | Wireless | Wi-Fi 5 (802.11a/b/g/n/ac) + Bluetooth 5.1 |
 
-The MPU handles everything Linux: running Python programs, serving web pages, processing camera images with OpenCV, running AI inference with llama-server, and hosting QClaw itself. Its GPIO pins operate at 1.8 V and are dedicated to system functions (camera control, display, audio). They are NOT the Arduino pins a user uses for their project.
+The MPU handles everything Linux: running Python programs, serving web pages, processing camera images with OpenCV, running AI inference (via the precompiled `engines/llamacli/mpu/llama-cli` spawned as a subprocess per `Chat()` by `pkg/providers/llamacli`), and hosting QClaw itself. Its GPIO pins operate at 1.8 V and are dedicated to system functions (camera control, display, audio). They are NOT the Arduino pins a user uses for their project.
 
 ### The MCU: Where Arduino Sketches Run
 
@@ -225,7 +225,17 @@ The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` a
 
 ## Part 3: How QClaw Works — The Two Data Paths
 
-v3 has two execution paths. They share the same llama-server, model, system prompt, and skills tree — they differ in what surrounds the LLM call.
+v3 has two execution paths. They share the same `engines/llamacli` engine, model, system prompt, and skills tree — they differ in what surrounds the LLM call.
+
+> **`qclaw-llamaCLI` track update.** The original v3 design ran a single
+> long-lived `llama-server` and routed both paths through it over loopback
+> HTTP. The current track replaces that with `pkg/providers/llamacli`, a Go
+> driver that `fork+exec`s the precompiled `engines/llamacli/mpu/llama-cli`
+> (assix) **once per `Chat()` call**. There is no persistent server; the
+> agent process and the inference engine share the same process tree.
+> Path A below is updated accordingly. Path B's Python REPL was an HTTP
+> client to that retired server and is disabled on this track (see
+> `scripts/qclaw-launch-direct.sh`).
 
 ### Path A — Agentic (`make qclaw-agentic`)
 
@@ -265,15 +275,27 @@ ContextBuilder.BuildMessages() (pkg/agent/context.go)
     │   7. Memory context (MEMORY.md if exists)
     │ Appends conversation history.
     ▼
-Provider.Complete() (pkg/providers/openai_compat/provider.go)
-    │ HTTP POST to http://127.0.0.1:8080/v1/chat/completions
-    │ request_timeout = 1200s
+llamacli.Provider.Chat() (pkg/providers/llamacli/provider.go)
+    │ renderPrompt() — emits a ChatML transcript from the Message[] list.
+    │ buildArgs()    — composes the llama-cli flag set:
+    │     -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf
+    │     -p <ChatML prompt>          (passed as a single arg, not a heredoc)
+    │     --grammar <GBNF envelope>   (text | tool_call constraint)
+    │     -c 2048 -t 4 --temp 0.0
+    │     --reasoning off  -st  --no-warmup
+    │ exec.CommandContext(ctx, binary, args...)
+    │ Stdout is captured; provider.timeout = 1200s (cold-load budget)
     ▼
-llama-server (yzma/lib/llama-server, llama.cpp b9127)
-    │ Model: Qwen_Qwen3.5-0.8B-Q4_0 (~490 MB in RAM)
-    │ Flags: --ctx-size 8192 --parallel 1 --flash-attn on --mlock
-    │        --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800
-    │ /no_think active → no reasoning preamble
+engines/llamacli/mpu/llama-cli (precompiled aarch64, assix snapshot,
+                                llama.cpp build b9099-5d5d2e15d)
+    │ Model: Qwen_Qwen3.5-0.8B-Q4_0 (~490 MB; mmap from disk on every call)
+    │ /no_think active in SOUL.md → no reasoning preamble
+    │ Process exits when generation completes; stdout flushed to provider.
+    ▼
+extractEnvelope() — finds the GBNF-constrained {"text":...} or
+                    {"tool_call":{"name":..., "arguments":{...}}} JSON in
+                    stdout and decodes it into LLMResponse.
+    │
     ▼
 LLM response — content + tool_calls[]
     │
@@ -305,34 +327,37 @@ AgentLoop publishes OutboundMessage to bus
 Channel adapter sends message back to user
 ```
 
-### Path B — Direct (`make qclaw-direct`)
+### Path B — Direct (`make qclaw-direct`) — disabled on `qclaw-llamaCLI`
 
-Simpler path for fast Q&A. No agent loop, no tools.
+The direct path was a Python REPL (`scripts/qclaw-direct-chat.py`) that
+applied the same 23-rule pre-router and then `urllib.request.urlopen()`'d
+the OpenAI-compatible `/v1/chat/completions` endpoint on the long-lived
+`llama-server`. On the `qclaw-llamaCLI` track that server doesn't exist
+any more — every `Chat()` is a one-shot subprocess of `mpu/llama-cli` —
+so there is no HTTP endpoint for the Python REPL to talk to.
+
+`scripts/qclaw-launch-direct.sh` now prints a redirect to
+`make qclaw-agentic` and exits with code 2. Re-enabling a direct path
+under the CLI provider would mean porting the Python pre-router + chat
+loop to call the Go `llamacli.Provider` directly (or shelling out to a
+small `qclaw-direct` subcommand that constructs the provider, builds a
+single-turn prompt, and prints the response).
+
+If you arrived here looking for the direct path's historical shape, the
+flow was:
 
 ```
-User types in terminal REPL
-    │
-    ▼
-scripts/qclaw-direct-chat.py
-    │
-    ▼
-preload_for_message()  ← same 23 pre-router rules, ported to Python
-    │ Builds STOP preamble + inlined SKILL.md / reference content.
-    ▼
-build_system_prompt()
-    │ Reads SOUL.md, prepends pre-router block.
-    │ (No <skills> XML, no tool schema — saves ~1.8K chars vs agentic.)
-    ▼
-urllib.request.urlopen()
-    │ Single HTTP POST to http://127.0.0.1:8080/v1/chat/completions
-    │ tools=[] — no tool capability whatsoever
-    ▼
-llama-server (same instance as agentic path)
-    ▼
-Single LLM response → printed to terminal
+User types in REPL → qclaw-direct-chat.py
+    │ preload_for_message()  ← 23 pre-router rules, Python port
+    │ build_system_prompt()  ← SOUL.md + STOP preamble, no <skills>, no tools
+    │ urllib.request.urlopen() → POST /v1/chat/completions on the
+    │   long-lived llama-server (yzma/lib/llama-server, llama.cpp b9127)
+    │ Single LLM response → printed to terminal
 ```
 
-The direct path **cannot** compile, upload, or call any tool. Sketches come back as text in the response; the user copies them and uploads via the Arduino IDE (or switches to the agentic path).
+The direct path always **could not** compile, upload, or call any tool —
+sketches came back as text. For all current use cases (this track and
+forward), use Path A.
 
 ### End-to-End Timing Budget (v3 measured)
 
@@ -637,9 +662,9 @@ Earlier QClaw versions registered an `i2c` tool in `pkg/tools/i2c.go` that acces
 
 | Parameter | Value | Why |
 |-----------|-------|-----|
-| `model_name` | `qwen-local` | Local llama-server, no cloud |
-| `api_base` | `http://127.0.0.1:8080/v1` | llama-server loopback |
-| `request_timeout` | 1200 | 0.8B agentic cold prefill of the ~20K-char system prompt fits comfortably |
+| `model_name` | `llama-cli/Qwen_Qwen3.5-0.8B-Q4_0.gguf` | Engages `pkg/providers/llamacli` and selects the GGUF under `~/models/` |
+| `binary_path` | `./engines/llamacli/mpu/llama-cli` | Precompiled aarch64 ELF (assix snapshot) |
+| `request_timeout` | 1200 | 0.8B cold-load (mmap + grammar compile + decode) of the ~20K-char system prompt fits comfortably |
 | `max_tokens` | 2048 | Bounds max response length; v3 reduced from 4096 |
 | `max_tool_iterations` | 20 | Generous; most workflows finish in 2–5 |
 | `summarize_message_threshold` | 10 | Compress history at 10 messages |
@@ -649,26 +674,32 @@ Earlier QClaw versions registered an `i2c` tool in `pkg/tools/i2c.go` that acces
 | Web tools | disabled | Offline use; eliminates DNS latency |
 | Heartbeat | disabled | Eliminates background model pings |
 
-### llama-server Optimal Flags for Uno Q (v3)
+### llama-cli Invocation Shape for Uno Q (`qclaw-llamaCLI` track)
+
+The Go provider `pkg/providers/llamacli` spawns the binary like this (paraphrased):
 
 ```bash
-./yzma/lib/llama-server \
+./engines/llamacli/mpu/llama-cli \
   -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \   # Q4_0 (490 MB) — primary v3 model
-  --host 127.0.0.1 \      # loopback only — do not expose externally
-  --port 8080 \
-  --ctx-size 8192 \        # KV cache fits with skills inlined in system prompt
-  --parallel 1 \           # single-slot — users queue if multiple arrive
-  -t 4 \                   # use all 4 Cortex-A53 cores
-  --flash-attn on \        # ~10% speedup, lower memory pressure
-  --mlock \                # pin model weights in RAM (no swap)
-  --cache-type-k q8_0 --cache-type-v q8_0 \  # quantize KV cache to halve its RAM
-  --reasoning-budget 800   # cap <think> tokens (belt-and-braces with /no_think)
+  -p "<rendered ChatML prompt>" \             # one argv, not stdin (the binary's tty handling hangs on stdin pipes)
+  --grammar '<GBNF envelope>' \               # text-OR-tool_call constraint; replaces the broken --json-schema
+  -c 2048 \                                   # ctx size — smaller than the old server's 8192 because every call is fresh
+  -t 4 \                                      # use all 4 Cortex-A53 cores
+  --temp 0.0 \                                # deterministic decode
+  -n 256 \                                    # cap output tokens (provider sets per-call)
+  --reasoning off \                           # also belt-and-braces; SOUL.md still opens with /no_think
+  -st \                                       # single-turn (this fork's flag set; `-no-cnv` does the opposite of upstream here)
+  --no-warmup                                 # skip the 1-token warmup; we want exactly one user turn per spawn
 ```
 
 **Why these values?**
-- `--ctx-size 8192`: a v3 system prompt with full pre-router expansion can reach ~20K chars (~6K tokens) — 8192 leaves headroom for the user message and the response.
-- `--parallel 1`: prevents two users' prompts from interleaving in the KV cache. For multi-user deployments, run multiple Uno Qs or accept the queue.
-- `--reasoning-budget 800`: with `/no_think` in SOUL.md, Qwen3 should never emit `<think>` content, but the cap is a safety net for cases where the model ignores the directive.
+- `-c 2048`: the per-call ChatML transcript is rendered freshly each spawn and is shorter than the long-lived-server's full conversation. 2048 fits SOUL.md + pre-router-expanded skills + the user turn + a healthy response budget; raise it for long conversations (the provider clamps based on `request_timeout`).
+- `-t 4`: all four Cortex-A53 cores — exclusive ownership for the duration of the subprocess, then released for the next `Chat()`.
+- `--temp 0.0` + `--reasoning off`: deterministic, no `<think>` preamble — `/no_think` in `SOUL.md` is the primary suppressor, this is the safety net.
+- `--grammar` not `--json-schema`: the assix-vendored binary's `--json-schema` sampler throws `std::exception` on init — see `docs/GPU/llama-cli-provider-whitepaper.md` §3.2. The provider ships a hand-written GBNF that produces the same envelope shape (`{"text":...}` or `{"tool_call":{...}}`).
+- `-st`: this fork inverts the upstream `--single-turn` / `-no-cnv` semantics — using `-st` here means "run conversation for a single turn only, then exit", which is exactly the per-`Chat()` shape we want. Provider tests cover both flags to catch future fork drift.
+
+There is **no `--parallel` slot** to configure — every `Chat()` gets a fresh process. Concurrent calls fan out into N concurrent subprocesses, each peaking at ~1.1 GB RSS; on a 4 GB Uno Q that bounds practical concurrency to one or two simultaneous turns. Multi-user deployments should still queue at the channel layer or run multiple Uno Qs.
 
 ### SOUL.md System Prompt Flow (v3)
 
@@ -840,7 +871,8 @@ QClaw/
 │   ├── channels/                # Telegram, Discord, Slack, terminal, ...
 │   ├── config/                  # Config struct, defaults, migrations
 │   ├── providers/               # LLM provider adapters
-│   │   └── openai_compat/       # Our inference path → llama-server
+│   │   ├── llamacli/            # ← v3+: subprocess driver for engines/llamacli/mpu/llama-cli
+│   │   └── openai_compat/       # Cloud / external OpenAI-compatible endpoints (Anthropic, OpenAI, etc.)
 │   ├── skills/                  # Skill discovery and loading (BuildSkillsSummary)
 │   └── tools/
 │       ├── arduino.go           # ← compile + OpenOCD flash @ 0x8100000
@@ -912,8 +944,12 @@ QClaw/
 │   ├── qclaw-direct-chat.py    # ← Direct path Python REPL
 │   ├── qclaw-onboard.sh        # Interactive setup wizard
 │   └── arduino-cli-setup.sh     # Installs arduino-cli + arduino:zephyr core
-├── yzma/                        # Submodule: llama.cpp FFI bindings
-│   └── lib/                     # llama-server and llama-cli binaries
+├── engines/                     # On-device inference engines
+│   └── llamacli/                # Submodule → assix/Arduino-UnoQ-Optimized-Llama-CLI
+│       ├── mpu/llama-cli        #   ← precompiled aarch64 ELF used at runtime
+│       ├── llama.cpp/           #   source tree (not built; kept for reference)
+│       ├── mcu/                 #   STM32 bridge sketch (unused by QClaw)
+│       └── README.md            #   assix-side docs
 ├── docs/QClaw/                 # Guides, whitepapers, evaluation artifacts
 │   ├── operator-guide.md
 │   ├── user-guide.md

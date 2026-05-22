@@ -2,11 +2,12 @@
 
 Step-by-step guide to run QClaw on an Arduino Uno Q — from a fresh board to a working AI assistant that writes, compiles, and uploads Arduino sketches.
 
-v3 ships **two execution paths**:
-- **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 4 tools (read/write/list/arduino); can compile and flash sketches end-to-end.
-- **Direct** (`make qclaw-direct`) — pre-router + single LLM call, no tools; faster Q&A but cannot compile or upload.
+v3 ships **two execution paths**, both backed by the in-tree `pkg/providers/llamacli` which spawns the precompiled `engines/llamacli/mpu/llama-cli` (assix) as a subprocess per `Chat()`:
 
-Both paths share the same install, workspace, and skills tree. You pick the path when you launch (Step 5). See `docs/QClaw/whitepaper.md` for the design rationale.
+- **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 8 tools (read/write/list/arduino/camera/sysfs_led/network/i2cdetect); can compile and flash sketches end-to-end. **This is the supported path on `qclaw-llamaCLI`.**
+- **Direct** (`make qclaw-direct`) — disabled on `qclaw-llamaCLI`. The original direct path was a Python REPL that POSTed to the long-lived `llama-server`; without a persistent server it has no endpoint to talk to. `scripts/qclaw-launch-direct.sh` exits with a redirect to `make qclaw-agentic`.
+
+See `docs/QClaw/whitepaper.md` and `docs/GPU/llama-cli-provider-whitepaper.md` for the design rationale.
 
 ---
 
@@ -35,13 +36,34 @@ git submodule update --init --recursive
 
 ---
 
-## Step 2: Download the Inference Engine
+## Step 2: Verify the Inference Engine Submodule
+
+The precompiled `llama-cli` ships **inside the repo** as a git submodule
+(`engines/llamacli`, pulling assix's
+[`Arduino-UnoQ-Optimized-Llama-CLI`](https://github.com/assix/Arduino-UnoQ-Optimized-Llama-CLI)
+snapshot). After Step 1's `git submodule update --init --recursive`, the
+binary is already on disk at `engines/llamacli/mpu/llama-cli`.
 
 ```bash
-cd yzma && make download-llama.cpp && cd ..
+ls -la engines/llamacli/mpu/llama-cli
+# ⇒ -rwxr-xr-x ... 12M ... engines/llamacli/mpu/llama-cli
+
+./engines/llamacli/mpu/llama-cli --version 2>&1 | head -2
+# ⇒ version: 9099 (5d5d2e15d)
+# ⇒ built with GNU 13.3.0 for Linux aarch64
 ```
 
-This places `llama-server` in `yzma/lib/`. It is the engine that runs the AI model.
+If the binary is missing (clone without `--recursive`, or shallow checkout),
+fetch it explicitly:
+
+```bash
+git submodule update --init --recursive engines/llamacli
+```
+
+There is no `make download-llama.cpp` step any more — there is no
+`llama-server` to start, no shared libraries to link, no FFI handshake.
+The Go provider in `pkg/providers/llamacli` `fork+exec`s this single ELF
+file per inference call.
 
 ---
 
@@ -97,17 +119,23 @@ make qclaw-setup
 
 ---
 
-## Step 5: Launch — Pick a Path
+## Step 5: Launch
 
-Both paths start the same `llama-server` instance under the hood. Pick the path that matches your lesson goal.
+`make qclaw-agentic` brings up the Telegram gateway (if configured) and the
+agent terminal. There is no long-lived inference server to wait on — the
+first `Chat()` call spawns `engines/llamacli/mpu/llama-cli` as a subprocess
+(cold-load ~12 s for the 0.8B Q4_0 model), waits for its GBNF-constrained
+stdout envelope, and reaps the child. The next call repeats the spawn but
+benefits from the GGUF being in the page cache (warm-load ~3 s overhead
+before the first prefill token).
 
-### Path A — Agentic (default, production)
+### Path A — Agentic (default, supported)
 
 ```bash
 make qclaw-agentic    # or simply: make qclaw
 ```
 
-Starts llama-server, the Telegram gateway (if configured), and the agent terminal. The agent loop drives multi-step workflows across **8 tools**:
+Starts the Telegram gateway (if configured) and the agent terminal. The agent loop drives multi-step workflows across **8 tools**:
 
 | Tool | What users can ask QClaw to do |
 |---|---|
@@ -135,33 +163,26 @@ You: Use the arduino tool to upload a blink sketch for D9 to the board.
 QClaw: [calls arduino tool → compiles → flashes → confirms]
 ```
 
-### Path B — Direct (fast Q&A)
+### Path B — Direct — disabled on `qclaw-llamaCLI`
 
 ```bash
 make qclaw-direct
+# qclaw-direct is not available in the QClaw-Client branch.
+# This branch uses the llama-cli provider (pkg/providers/llamacli), which spawns
+# mpu/llama-cli per Chat() call instead of running a persistent llama-server.
+# The direct path was an HTTP client tied to the server, so it has no endpoint
+# to talk to here.
+#
+# Run the agentic path instead:
+#   make qclaw-agentic
 ```
 
-Starts llama-server and drops into a Python REPL that POSTs directly to the OpenAI-compatible endpoint, applying the same **23 pre-router rules** as the agent (covering 15 skills). No agent loop. No tools. Lower latency. Cannot compile, upload, capture from the camera, drive LEDs, or scan I²C — sketches are returned as text for you to copy.
+Re-enabling a direct path under the llama-cli provider would mean porting
+the Python pre-router + chat loop to call the Go `llamacli.Provider`
+directly (or shelling out to a small `qclaw-direct` subcommand that builds
+a single-turn prompt and prints the response). Tracked as a follow-up.
 
-```
-  ┌───────────────────────────────────────────────┐
-  │  🧘  Q C L A W — Direct Server                 │
-  │      Arduino Q&A Assistant (fast path)         │
-  │                                                │
-  │  Pre-router + direct API · no tools · no loop  │
-  │  Best for: pinouts, voltage, concepts,         │
-  │            short sketches you'll flash by hand │
-  └───────────────────────────────────────────────┘
-
-You: Which pins on the Uno Q can do PWM?
-
-  [pre-router fired: uno-q-hardware, uno-q-hardware/pinout.md]
-  Thinking... done (444.8s, finish=stop)
-
-QClaw: D3, D5, D6, D9, D10, D11
-```
-
-Press `Ctrl+C` in either mode to stop everything cleanly.
+Press `Ctrl+C` in the agentic terminal to stop cleanly.
 
 ---
 
@@ -199,34 +220,35 @@ To verify the flash actually worked, watch the board's LED matrix or measure the
 |---|---|
 | `make qclaw` | Default — alias for `qclaw-agentic` |
 | `make qclaw-agentic` | **Agentic path**: agent loop + 23-rule pre-router + 8 tools (compile/upload + camera + sysfs_led + network + i2cdetect + filesystem) |
-| `make qclaw-direct` | **Direct path**: same 23-rule pre-router + single LLM call, no tools (fast Q&A across 15 skills) |
+| `make qclaw-direct` | **Disabled** on `qclaw-llamaCLI`: prints a redirect and exits |
 | `make qclaw-install` | Full first-time setup (build + workspace + arduino-cli + wizard) |
 | `make qclaw-onboard` | Re-run setup wizard (change Telegram token, allow list) |
 | `make qclaw-setup` | Reinstall system prompt and skills tree after a git pull |
 | `make qclaw-arduino-setup` | Install or update arduino-cli and the Uno Q board core |
-| `make qclaw-stop` | Stop background llama-server and gateway |
+| `make qclaw-stop` | Stop the QClaw gateway/agent (no llama-server to kill on this track) |
 | `make qclaw-tui` | Launch the graphical channel configuration panel |
 
 ---
 
 ## Auto-start on Boot (Optional)
 
-To run llama-server automatically on boot (v3 flags):
+On the `qclaw-llamaCLI` track there is **no inference daemon to enable** —
+inference is in-process: each `Chat()` is a one-shot subprocess of
+`engines/llamacli/mpu/llama-cli`. What you can autostart is the QClaw
+*gateway* (which receives Telegram/IRC/Matrix/etc. messages and feeds the
+agent loop):
 
 ```ini
-# /etc/systemd/system/llama-server.service
+# /etc/systemd/system/qclaw-gateway.service
 [Unit]
-Description=llama-server inference daemon
-After=network.target
+Description=QClaw gateway + agent loop
+After=network-online.target
 
 [Service]
-ExecStart=/home/arduino/ArduinoApps/QClaw/yzma/lib/llama-server \
-  -m /home/arduino/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  --host 127.0.0.1 --port 8080 \
-  --ctx-size 8192 --parallel 1 -t 4 \
-  --flash-attn on --mlock \
-  --cache-type-k q8_0 --cache-type-v q8_0 \
-  --reasoning-budget 800
+WorkingDirectory=/home/arduino/ArduinoApps/QClaw
+ExecStart=/home/arduino/ArduinoApps/QClaw/build/qclaw gateway
+Environment=QCLAW_MODEL=/home/arduino/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf
+Environment=LLAMA_CLI=/home/arduino/ArduinoApps/QClaw/engines/llamacli/mpu/llama-cli
 Restart=on-failure
 User=arduino
 
@@ -235,10 +257,15 @@ WantedBy=multi-user.target
 ```
 
 ```bash
-sudo systemctl enable --now llama-server
+sudo systemctl enable --now qclaw-gateway
 ```
 
-Users can then SSH in and run `make qclaw-agentic` or `make qclaw-direct` — llama-server is already warm and their session starts in seconds. Both launcher scripts detect a running llama-server on port 8080 and reuse it rather than starting a duplicate.
+The first inbound message pays the ~12 s cold-load cost as the kernel
+mmap's the GGUF; subsequent messages within the same boot are
+warm-cache (~3 s overhead before the first prefill token). To **warm the
+page cache at boot** without spinning up the agent, drop a short oneshot
+service that runs `cat ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf > /dev/null`
+before `qclaw-gateway` starts.
 
 ---
 
@@ -246,15 +273,18 @@ Users can then SSH in and run `make qclaw-agentic` or `make qclaw-direct` — ll
 
 **"Asking QClaw..." appears on Telegram but no response arrives**
 
-1. Check llama-server: `ps aux | grep llama-server`
-2. Check it is healthy: `curl http://127.0.0.1:8080/v1/models`
-3. Run with debug logging: `./build/qclaw gateway --debug`
-4. Confirm `request_timeout` in `~/.qclaw/config.json` is `1200` — the default 30s times out during model warm-up
+1. Confirm the binary is executable: `ls -la engines/llamacli/mpu/llama-cli` — must be `-rwxr-xr-x`. If the submodule was checked out with the wrong perms, `chmod +x` it.
+2. Confirm the model is present: `ls -la ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf`.
+3. Manually invoke the binary to surface its stderr: `./engines/llamacli/mpu/llama-cli -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf -p "hi" -n 8 -st 2>&1 | head -40` — this should produce ~8 tokens of output. If it segfaults, prints `Unsupported GPU`, or hangs, the GGUF or binary is the problem (not the agent loop).
+4. Run the agent with debug logging: `./build/qclaw gateway --debug` — every `Chat()` logs the full subprocess argv plus exit code and stderr tail.
+5. Confirm `request_timeout` in `~/.qclaw/config.json` is `1200` — the default 30 s times out during cold model load. Cold spawns take ~12 s; warm spawns ~3 s + decode.
+6. End-to-end smoke test: `bash scripts/bench-llamacli-provider.sh` (Phase A.2 should print `[ Prompt: 10.6 t/s | Generation: 8.8 t/s ]` in ~10 s — if it doesn't, the regression is in the provider, not your agent setup).
 
 **Responses are very slow (> 60 seconds)**
 
-- Confirm `/no_think` is the first line of `~/.qclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120s
-- Check RAM: `free -h` — llama-server needs ~1.3 GB free
+- Confirm `/no_think` is the first line of `~/.qclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120 s
+- Check RAM: `free -h` — each `llama-cli` subprocess peaks at ~1.1 GB RSS. If two `Chat()`s overlap and the board is also serving Telegram, you can swap (Uno Q has 1.8 GiB swap by default but I/O on swapped weights is brutally slow).
+- Check that page cache has the model: `vmtouch ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf` (install with `apt install vmtouch`) — if 0 % is resident, the next call will pay the full mmap cost (~10 s on eMMC).
 
 **Sketch compilation fails**
 
@@ -282,12 +312,26 @@ make qclaw         # restart
 
 ## Verifying Performance
 
-Target numbers for `Qwen3.5-0.8B-Q6_K` on Uno Q with optimized config (`--ctx-size 12288 --parallel 2`, `/no_think` active):
+Target numbers for `Qwen_Qwen3.5-0.8B-Q4_0` on the `qclaw-llamaCLI` track
+(`engines/llamacli/mpu/llama-cli`, `-c 2048 -t 4 --temp 0.0 --reasoning off`,
+warm cache, `/no_think` active in `SOUL.md`):
 
 | Metric | Target |
 |---|---|
-| Time to first token | < 3s |
-| Generation throughput | > 4 tok/s |
-| End-to-end (80-word response) | < 25s |
-| llama-server RAM | < 1.4 GB |
-| Swap usage | 0 |
+| Prompt processing (warm) | ~10.6 tok/s |
+| Generation throughput (warm, n=64) | ~8.8 tok/s |
+| End-to-end `Chat()` walltime (warm, 64-tok decode) | ~10 s |
+| End-to-end `Chat()` walltime (cold mmap + grammar + 1 tok) | ~12 s |
+| Per-`Chat()` `llama-cli` RSS peak | ~1.1 GB |
+| Swap usage during single `Chat()` | 0 |
+
+To reproduce these numbers end-to-end:
+
+```bash
+bash scripts/bench-llamacli-provider.sh
+```
+
+The script measures direct-binary t/s (Phase A), cold-start cost (Phase B),
+and the full Go-provider `Chat()` walltime including subprocess spawn,
+stdout capture, and envelope parse (Phase C). Full V1 benchmark
+methodology and raw logs: [`docs/GPU/benchmark-results.md`](../../GPU/benchmark-results.md).
