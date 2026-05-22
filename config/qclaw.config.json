@@ -1,5 +1,5 @@
 {
-  "_comment": "QClaw configuration for Arduino Uno Q \u2014 local llama-server inference via yzma. Copy to ~/.qclaw/config.json to activate.",
+  "_comment": "QClaw configuration for Arduino Uno Q \u2014 on-device llama-cli inference via engines/llamacli. Copy to ~/.qclaw/config.json to activate.",
   "agents": {
     "defaults": {
       "workspace": "~/.qclaw/workspace",
@@ -16,14 +16,14 @@
   "model_list": [
     {
       "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-      "model": "openai/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-      "api_base": "http://127.0.0.1:8080/v1",
+      "model": "llama-cli/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "engines/llamacli/mpu/llama-cli",
       "api_key": "local",
       "request_timeout": 1200,
       "extra_body": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
-        }
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 4096
       }
     }
   ],

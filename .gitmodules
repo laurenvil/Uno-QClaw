@@ -1,4 +1,3 @@
-[submodule "yzma"]
-	path = yzma
-	url = https://github.com/hybridgroup/yzma.git
-	branch = main
+[submodule "engines/llamacli"]
+	path = engines/llamacli
+	url = https://github.com/assix/Arduino-UnoQ-Optimized-Llama-CLI.git

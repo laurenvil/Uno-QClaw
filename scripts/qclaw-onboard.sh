@@ -6,8 +6,8 @@ set -euo pipefail
 
 QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
 CONFIG="$QCLAW_HOME/config.json"
-QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q6_K.gguf}"
-LLAMA_SERVER="${LLAMA_SERVER:-./yzma/lib/llama-server}"
+QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf}"
+LLAMA_CLI="${LLAMA_CLI:-./engines/llamacli/mpu/llama-cli}"
 
 # Colours (safe — only used when stdout is a terminal)
 if [ -t 1 ]; then
@@ -49,24 +49,24 @@ else
     echo "  Download it now with:"
     echo -e "  ${CYAN}  mkdir -p ~/models"
     echo -e "  ${CYAN}  wget -O $QCLAW_MODEL \\"
-    echo -e "  ${CYAN}    'https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q6_K.gguf'${RESET}"
+    echo -e "  ${CYAN}    'https://huggingface.co/Qwen/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_0.gguf'${RESET}"
     echo ""
     echo "  (You can still continue setup — download the model before running 'make qclaw')"
 fi
 echo ""
 
-# ── llama-server check ────────────────────────────────────────────────────────
+# ── llama-cli check ───────────────────────────────────────────────────────────
 
-echo -e "${BOLD}[2/4] Checking llama-server...${RESET}"
-if [ -f "$LLAMA_SERVER" ]; then
-    echo -e "  ${GREEN}Found:${RESET} $LLAMA_SERVER"
+echo -e "${BOLD}[2/4] Checking llama-cli (inference engine)...${RESET}"
+if [ -x "$LLAMA_CLI" ]; then
+    echo -e "  ${GREEN}Found:${RESET} $LLAMA_CLI"
 else
-    echo -e "  ${YELLOW}llama-server not found at: $LLAMA_SERVER${RESET}"
+    echo -e "  ${YELLOW}llama-cli not found at: $LLAMA_CLI${RESET}"
     echo ""
-    echo "  Download it with:"
-    echo -e "  ${CYAN}  cd yzma && make download-llama.cpp && cd ..${RESET}"
+    echo "  Initialize the engines/llamacli submodule:"
+    echo -e "  ${CYAN}  git submodule update --init --recursive engines/llamacli${RESET}"
     echo ""
-    echo "  (You can still continue setup — download llama-server before running 'make qclaw')"
+    echo "  (You can still continue setup — fetch the submodule before running 'make qclaw')"
 fi
 echo ""
 
@@ -183,7 +183,7 @@ echo ""
 echo -e "${GREEN}${BOLD}QClaw is ready.${RESET}"
 echo ""
 echo "  Start QClaw:     make qclaw"
-if [ -f "$LLAMA_SERVER" ] && [ ! -f "$QCLAW_MODEL" ]; then
+if [ -x "$LLAMA_CLI" ] && [ ! -f "$QCLAW_MODEL" ]; then
     echo -e "  ${YELLOW}Remember to download the model before launching.${RESET}"
 fi
 if [ -z "$ARDUINO_CLI_PATH" ]; then

@@ -55,9 +55,8 @@ WORKSPACE_DIR?=$(QCLAW_HOME)/workspace
 WORKSPACE_SKILLS_DIR=$(WORKSPACE_DIR)/skills
 BUILTIN_SKILLS_DIR=$(CURDIR)/skills
 
-# QClaw / llama-server
-LLAMA_SERVER?=$(CURDIR)/yzma/lib/llama-server
-LLAMA_PORT?=8080
+# QClaw / llama-cli inference engine (assix-bundled binary)
+LLAMA_CLI?=$(CURDIR)/engines/llamacli/mpu/llama-cli
 QCLAW_MODEL?=$(HOME)/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf
 
 # OS detection
@@ -198,12 +197,12 @@ qclaw-arduino-setup:
 	@chmod +x scripts/arduino-cli-setup.sh
 	@scripts/arduino-cli-setup.sh
 
-## qclaw-onboard: Interactive setup — checks model/server, configures Telegram token
+## qclaw-onboard: Interactive setup — checks model/CLI binary, configures Telegram token
 qclaw-onboard:
 	@chmod +x scripts/qclaw-onboard.sh
 	@QCLAW_HOME=$(QCLAW_HOME) \
 	 QCLAW_MODEL=$(QCLAW_MODEL) \
-	 LLAMA_SERVER=$(LLAMA_SERVER) \
+	 LLAMA_CLI=$(LLAMA_CLI) \
 	 scripts/qclaw-onboard.sh
 
 ## qclaw-setup: Install QClaw workspace files and config (safe to re-run)
@@ -237,9 +236,8 @@ qclaw-agentic:
 	@chmod +x scripts/qclaw-launch.sh
 	@QCLAW_HOME=$(QCLAW_HOME) \
 	 QCLAW_MODEL=$(QCLAW_MODEL) \
-	 LLAMA_SERVER=$(LLAMA_SERVER) \
+	 LLAMA_CLI=$(LLAMA_CLI) \
 	 BINARY=$(BUILD_DIR)/$(BINARY_NAME) \
-	 LLAMA_PORT=$(LLAMA_PORT) \
 	 scripts/qclaw-launch.sh
 
 ## qclaw-direct: Direct architecture — 23-rule pre-router + direct API, NO agent loop, NO tools.
@@ -250,8 +248,7 @@ qclaw-direct:
 	@chmod +x scripts/qclaw-launch-direct.sh
 	@QCLAW_HOME=$(QCLAW_HOME) \
 	 QCLAW_MODEL=$(QCLAW_MODEL) \
-	 LLAMA_SERVER=$(LLAMA_SERVER) \
-	 LLAMA_PORT=$(LLAMA_PORT) \
+	 LLAMA_CLI=$(LLAMA_CLI) \
 	 scripts/qclaw-launch-direct.sh
 
 ## qclaw-tui: Build and launch the qclaw launcher TUI (for advanced channel config)
@@ -262,15 +259,10 @@ qclaw-tui:
 	@echo "Launching QClaw TUI..."
 	@$(BUILD_DIR)/qclaw-launcher-tui
 
-## qclaw-stop: Stop background llama-server and gateway processes
+## qclaw-stop: Stop background gateway process. (No long-running llama-server
+##              under the llama-cli provider: each Chat() spawns a one-shot
+##              subprocess that exits when generation completes.)
 qclaw-stop:
-	@if [ -f $(QCLAW_HOME)/llama-server.pid ]; then \
-		kill $$(cat $(QCLAW_HOME)/llama-server.pid) 2>/dev/null || true; \
-		rm -f $(QCLAW_HOME)/llama-server.pid; \
-		echo "Stopped llama-server"; \
-	else \
-		echo "llama-server not running (no PID file)"; \
-	fi
 	@if [ -f $(QCLAW_HOME)/gateway.pid ]; then \
 		kill $$(cat $(QCLAW_HOME)/gateway.pid) 2>/dev/null || true; \
 		rm -f $(QCLAW_HOME)/gateway.pid; \
