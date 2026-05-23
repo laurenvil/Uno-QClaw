@@ -43,6 +43,7 @@ type Provider struct {
 	ctxSize     int
 	port        int
 	host        string
+	timeout     time.Duration
 	extraArgs   []string
 	
 	// Internal state
@@ -53,6 +54,10 @@ type Provider struct {
 }
 
 type Option func(*Provider)
+
+func WithTimeout(t time.Duration) Option {
+	return func(p *Provider) { p.timeout = t }
+}
 
 func WithModelsDir(dir string) Option {
 	return func(p *Provider) { p.modelsDir = dir }
@@ -82,6 +87,7 @@ func NewProvider(binary string, opts ...Option) *Provider {
 		ctxSize:   4096,
 		port:      defaultPort,
 		host:      defaultHost,
+		timeout:   20 * time.Minute, // match llamacli default for cold prefill
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -90,7 +96,8 @@ func NewProvider(binary string, opts ...Option) *Provider {
 	}
 	
 	apiBase := fmt.Sprintf("http://%s:%d/v1", p.host, p.port)
-	p.inner = openai_compat.NewProvider("", apiBase, "")
+	p.inner = openai_compat.NewProvider("", apiBase, "",
+		openai_compat.WithRequestTimeout(p.timeout))
 	
 	return p
 }
@@ -151,8 +158,9 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 		"--port", fmt.Sprintf("%d", p.port),
 		"-t", fmt.Sprintf("%d", p.threads),
 		"-c", fmt.Sprintf("%d", p.ctxSize),
-		"--jinja",       // Enable template-based tool calling
-		"--log-disable", // Keep stdout clean
+		"--reasoning", "off", // Disable Qwen 3.5 auto-<think> injection
+		"--jinja",           // Enable template-based tool calling
+		"--log-disable",     // Keep stdout clean
 	}
 	args = append(args, p.extraArgs...)
 	

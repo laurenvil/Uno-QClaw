@@ -242,6 +242,9 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 		if v, ok := cfg.ExtraBody["port"].(float64); ok {
 			opts = append(opts, llamaserver.WithPort(int(v)))
 		}
+		if cfg.RequestTimeout > 0 {
+			opts = append(opts, llamaserver.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
+		}
 		return llamaserver.NewProvider(binary, opts...), modelID, nil
 
 	case "github-copilot", "copilot":
