@@ -23,7 +23,7 @@
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 4096
+        "ctx_size": 8192
       }
     }
   ],

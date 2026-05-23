@@ -217,8 +217,9 @@ qclaw-setup:
 	@cp -r workspace/skills/. $(WORKSPACE_DIR)/skills/
 	@echo "  Installed: $(WORKSPACE_DIR)/skills/"
 	@if [ ! -f $(QCLAW_HOME)/config.json ]; then \
-		cp config/qclaw.config.json $(QCLAW_HOME)/config.json; \
-		echo "  Installed: $(QCLAW_HOME)/config.json"; \
+		sed 's|"api_base": "engines/llamacli/mpu/llama-cli"|"api_base": "$(LLAMA_CLI)"|' \
+			config/qclaw.config.json > $(QCLAW_HOME)/config.json; \
+		echo "  Installed: $(QCLAW_HOME)/config.json (api_base → $(LLAMA_CLI))"; \
 	else \
 		echo "  Skipped:   $(QCLAW_HOME)/config.json (already exists — edit manually to update)"; \
 	fi

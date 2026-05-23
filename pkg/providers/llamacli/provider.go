@@ -165,7 +165,7 @@ func (p *Provider) Chat(
 
 	payload, perr := extractJSON(stdout.String())
 	if perr != nil {
-		return nil, fmt.Errorf("parsing llama-cli output: %w (stdout: %s)", perr, truncate(stdout.String(), 500))
+		return nil, fmt.Errorf("parsing llama-cli output: %w (stdout tail: %s)", perr, truncate(stdoutTail(stdout.String(), 600), 600))
 	}
 
 	return parseEnvelope(payload)
@@ -269,39 +269,65 @@ func grammarQuotedLiteralAlternation(names []string) string {
 	return strings.Join(parts, " | ")
 }
 
-// extractJSON returns the last top-level JSON object found in raw. llama-cli
-// prints banners and timing info around the generated payload; the JSON we
-// asked for is the final {...} block.
+// extractJSON returns the last balanced JSON object in raw that parses
+// successfully. llama-cli prints banners and timing info around the generated
+// payload, and the echoed prompt may contain template placeholders like
+// `{skill-name}` or code snippets like `void setup() { ... }` that look like
+// JSON but aren't. So we scan from the end backwards, trying each candidate
+// `{...}` block, and return the first one that parses.
 func extractJSON(raw string) (json.RawMessage, error) {
-	closeIdx := strings.LastIndex(raw, "}")
-	if closeIdx < 0 {
-		return nil, errors.New("no '}' in output")
-	}
-	depth := 0
-	openIdx := -1
-	for i := closeIdx; i >= 0; i-- {
-		switch raw[i] {
-		case '}':
-			depth++
-		case '{':
-			depth--
-			if depth == 0 {
-				openIdx = i
-			}
-		}
-		if openIdx >= 0 {
+	search := raw
+	var lastErr error
+	for {
+		closeIdx := strings.LastIndex(search, "}")
+		if closeIdx < 0 {
 			break
 		}
+		depth := 0
+		openIdx := -1
+		for i := closeIdx; i >= 0; i-- {
+			switch search[i] {
+			case '}':
+				depth++
+			case '{':
+				depth--
+				if depth == 0 {
+					openIdx = i
+				}
+			}
+			if openIdx >= 0 {
+				break
+			}
+		}
+		if openIdx < 0 {
+			// No matching `{` for this `}`. Drop just this `}` and try again.
+			search = search[:closeIdx]
+			continue
+		}
+		payload := strings.TrimSpace(search[openIdx : closeIdx+1])
+		var probe any
+		if err := json.Unmarshal([]byte(payload), &probe); err == nil {
+			return json.RawMessage(payload), nil
+		} else {
+			lastErr = err
+		}
+		// This candidate didn't parse; try an earlier `{...}` by searching
+		// before the failed candidate's opening brace.
+		search = search[:openIdx]
 	}
-	if openIdx < 0 {
-		return nil, errors.New("unmatched braces in output")
+	if lastErr != nil {
+		return nil, fmt.Errorf("no valid JSON object in output: %w", lastErr)
 	}
-	payload := strings.TrimSpace(raw[openIdx : closeIdx+1])
-	var probe any
-	if err := json.Unmarshal([]byte(payload), &probe); err != nil {
-		return nil, fmt.Errorf("invalid JSON payload: %w", err)
+	return nil, errors.New("no '}' in output")
+}
+
+// stdoutTail returns the last n bytes of s, prefixed with "…" if truncated.
+// Useful for error messages where the JSON envelope (if any) is at the end.
+func stdoutTail(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
-	return json.RawMessage(payload), nil
+	return "…" + s[len(s)-n:]
 }
 
 func parseEnvelope(payload json.RawMessage) (*LLMResponse, error) {
