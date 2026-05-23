@@ -5,7 +5,7 @@
       "workspace": "~/.qclaw/workspace",
       "restrict_to_workspace": false,
       "allow_read_outside_workspace": true,
-      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf (Server)",
       "max_tokens": 2048,
       "temperature": 0.3,
       "max_tool_iterations": 8,

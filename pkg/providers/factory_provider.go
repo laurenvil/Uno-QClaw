@@ -227,7 +227,7 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 		// cfg.APIBase carries the path to the llama-server binary.
 		binary := cfg.APIBase
 		if binary == "" {
-			return nil, "", fmt.Errorf("api_base is required for llama-server protocol")
+			binary = "engines/llamacli/mpu/llama-server"
 		}
 		opts := []llamaserver.Option{}
 		if v, ok := cfg.ExtraBody["models_dir"].(string); ok && v != "" {
