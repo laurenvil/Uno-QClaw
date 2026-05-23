@@ -25,7 +25,7 @@ if [ ! -f "$BINARY" ]; then
 fi
 
 # Detect which provider to check based on config
-PROVIDER_PROTO=$(grep -o '"model": "[^"]*"' "$QCLAW_HOME/config.json" | head -1 | cut -d/ -f1 | cut -d: -f2 | xargs)
+PROVIDER_PROTO=$(grep -o '"model": "[^"]*"' "$QCLAW_HOME/config.json" | head -1 | cut -d/ -f1 | cut -d: -f2 | tr -d '"' | xargs)
 
 if [[ "$PROVIDER_PROTO" == "llama-server" ]] || [[ "$PROVIDER_PROTO" == "llamaserver" ]]; then
     if [ ! -x "$LLAMA_SERVER" ]; then

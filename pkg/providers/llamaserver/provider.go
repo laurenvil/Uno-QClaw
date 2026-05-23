@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/laurenvil/Uno-QClaw/pkg/logger"
-	"github.com/laurenvil/Uno-QClaw/pkg/providers/common"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/openai_compat"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/protocoltypes"
 )
@@ -111,7 +110,7 @@ func (p *Provider) Chat(
 }
 
 func (p *Provider) GetDefaultModel() string {
-	return p.inner.GetDefaultModel()
+	return ""
 }
 
 func (p *Provider) Close() {

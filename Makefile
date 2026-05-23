@@ -250,6 +250,7 @@ qclaw-direct:
 	@QCLAW_HOME=$(QCLAW_HOME) \
 	 QCLAW_MODEL=$(QCLAW_MODEL) \
 	 LLAMA_CLI=$(LLAMA_CLI) \
+	 BINARY=$(BUILD_DIR)/$(BINARY_NAME) \
 	 scripts/qclaw-launch-direct.sh
 
 ## qclaw-tui: Build and launch the qclaw launcher TUI (for advanced channel config)

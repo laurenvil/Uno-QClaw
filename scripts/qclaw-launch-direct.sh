@@ -1,28 +1,48 @@
 #!/usr/bin/env bash
-# qclaw-launch-direct.sh — DISABLED in the QClaw-Client branch.
+# qclaw-launch-direct.sh — Launch QClaw in Direct mode (single-turn, no tools).
 #
-# The direct path was a Python HTTP client (qclaw-direct-chat.py) that talked
-# to a long-running llama-server. The llama-cli provider this branch uses
-# spawns a one-shot mpu/llama-cli subprocess per Chat() instead — there is no
-# HTTP endpoint for the Python client to call.
-#
-# Use the agentic path:
-#   make qclaw-agentic
-#
-# Re-enabling direct mode under the CLI provider would require porting the
-# Python pre-router + chat loop to call the same Go provider (or shelling out
-# to a small qclaw-direct subcommand). Tracked as a follow-up.
+# Direct mode uses the same pre-router and skills as agentic mode, but 
+# skips the tool loop for faster Q&A.
 set -euo pipefail
 
-cat >&2 <<'EOF'
-qclaw-direct is not available in the QClaw-Client branch.
+QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
+QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf}"
+LLAMA_CLI="${LLAMA_CLI:-./engines/llamacli/mpu/llama-cli}"
+BINARY="${BINARY:-./build/qclaw}"
 
-This branch uses the llama-cli provider (pkg/providers/llamacli), which spawns
-mpu/llama-cli per Chat() call instead of running a persistent llama-server.
-The direct path was an HTTP client tied to the server, so it has no endpoint
-to talk to here.
+# ── Prerequisites ─────────────────────────────────────────────────────────────
 
-Run the agentic path instead:
-  make qclaw-agentic
-EOF
-exit 2
+if [ ! -f "$BINARY" ]; then
+    echo "Error: QClaw binary not found at $BINARY"
+    echo "Run: make build"
+    exit 1
+fi
+
+if [ ! -x "$LLAMA_CLI" ]; then
+    echo "Error: llama-cli not found at $LLAMA_CLI"
+    echo "Run: git submodule update --init --recursive engines/llamacli"
+    exit 1
+fi
+
+if [ ! -f "$QCLAW_MODEL" ]; then
+    echo "Error: model not found at $QCLAW_MODEL"
+    exit 1
+fi
+
+export LLAMA_CLI QCLAW_MODEL
+
+# ── Terminal Chat (Direct) ───────────────────────────────────────────────────
+
+echo ""
+echo "  ┌───────────────────────────────────────────┐"
+echo "  │  🧘  Q  C  L  A  W  (DIRECT)             │"
+echo "  │      Arduino AI Assistant                  │"
+echo "  │      (Single-turn, no tools)               │"
+echo "  │                                            │"
+echo "  │  Type your question at 'Direct You:'       │"
+echo "  │  QClaw responds in a few seconds.          │"
+echo "  │  Type 'exit' or Ctrl+C to quit.            │"
+echo "  └───────────────────────────────────────────┘"
+echo ""
+
+"$BINARY" direct

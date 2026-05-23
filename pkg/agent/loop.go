@@ -64,6 +64,7 @@ type processOptions struct {
 	EnableSummary   bool     // Whether to trigger summarization
 	SendResponse    bool     // Whether to send response via bus
 	NoHistory       bool     // If true, don't load session history (for heartbeat)
+	Direct          bool     // If true, run in single-turn mode without tools
 }
 
 const (
@@ -641,12 +642,46 @@ func (al *AgentLoop) RecordLastChatID(chatID string) error {
 	}
 	return al.state.SetLastChatID(chatID)
 }
-
 func (al *AgentLoop) ProcessDirect(
 	ctx context.Context,
 	content, sessionKey string,
 ) (string, error) {
 	return al.ProcessDirectWithChannel(ctx, content, sessionKey, "cli", "direct")
+}
+
+func (al *AgentLoop) ProcessDirectSingleTurn(
+	ctx context.Context,
+	content, sessionKey string,
+) (string, error) {
+	if err := al.ensureMCPInitialized(ctx); err != nil {
+		return "", err
+	}
+
+	msg := bus.InboundMessage{
+		Channel:    "cli",
+		SenderID:   "direct",
+		ChatID:     "direct",
+		Content:    content,
+		SessionKey: sessionKey,
+	}
+
+	route, agent, routeErr := al.resolveMessageRoute(msg)
+	if routeErr != nil {
+		return "", routeErr
+	}
+
+	scopeKey := resolveScopeKey(route, msg.SessionKey)
+
+	return al.runAgentLoop(ctx, agent, processOptions{
+		SessionKey:      scopeKey,
+		Channel:         msg.Channel,
+		ChatID:          msg.ChatID,
+		UserMessage:     msg.Content,
+		DefaultResponse: defaultResponse,
+		EnableSummary:   false,
+		SendResponse:    false,
+		Direct:          true, // Enable direct mode
+	})
 }
 
 func (al *AgentLoop) ProcessDirectWithChannel(
@@ -1024,24 +1059,32 @@ func (al *AgentLoop) runLLMIteration(
 	iteration := 0
 	var finalContent string
 
+	maxIterations := agent.MaxIterations
+	if opts.Direct {
+		maxIterations = 1
+	}
+
 	// Determine effective model tier for this conversation turn.
 	// selectCandidates evaluates routing once and the decision is sticky for
 	// all tool-follow-up iterations within the same turn so that a multi-step
 	// tool chain doesn't switch models mid-way through.
 	activeCandidates, activeModel := al.selectCandidates(agent, opts.UserMessage, messages)
 
-	for iteration < agent.MaxIterations {
+	for iteration < maxIterations {
 		iteration++
 
 		logger.DebugCF("agent", "LLM iteration",
 			map[string]any{
 				"agent_id":  agent.ID,
 				"iteration": iteration,
-				"max":       agent.MaxIterations,
+				"max":       maxIterations,
 			})
 
 		// Build tool definitions
-		providerToolDefs := agent.Tools.ToProviderDefs()
+		var providerToolDefs []providers.ToolDefinition
+		if !opts.Direct {
+			providerToolDefs = agent.Tools.ToProviderDefs()
+		}
 
 		// Log LLM request details
 		logger.DebugCF("agent", "LLM request",
