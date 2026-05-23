@@ -14,6 +14,7 @@ import (
 	anthropicmessages "github.com/laurenvil/Uno-QClaw/pkg/providers/anthropic_messages"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/azure"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/llamacli"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers/llamaserver"
 )
 
 // createClaudeAuthProvider creates a Claude provider using OAuth credentials from auth store.
@@ -220,6 +221,28 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 			opts = append(opts, llamacli.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
 		}
 		return llamacli.NewProvider(binary, opts...), modelID, nil
+
+	case "llama-server", "llamaserver":
+		// Managed on-device persistent server.
+		// cfg.APIBase carries the path to the llama-server binary.
+		binary := cfg.APIBase
+		if binary == "" {
+			return nil, "", fmt.Errorf("api_base is required for llama-server protocol")
+		}
+		opts := []llamaserver.Option{}
+		if v, ok := cfg.ExtraBody["models_dir"].(string); ok && v != "" {
+			opts = append(opts, llamaserver.WithModelsDir(v))
+		}
+		if v, ok := cfg.ExtraBody["threads"].(float64); ok {
+			opts = append(opts, llamaserver.WithThreads(int(v)))
+		}
+		if v, ok := cfg.ExtraBody["ctx_size"].(float64); ok {
+			opts = append(opts, llamaserver.WithContextSize(int(v)))
+		}
+		if v, ok := cfg.ExtraBody["port"].(float64); ok {
+			opts = append(opts, llamaserver.WithPort(int(v)))
+		}
+		return llamaserver.NewProvider(binary, opts...), modelID, nil
 
 	case "github-copilot", "copilot":
 		apiBase := cfg.APIBase

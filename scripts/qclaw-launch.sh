@@ -11,6 +11,7 @@ set -euo pipefail
 QCLAW_HOME="${QCLAW_HOME:-$HOME/.qclaw}"
 QCLAW_MODEL="${QCLAW_MODEL:-$HOME/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf}"
 LLAMA_CLI="${LLAMA_CLI:-./engines/llamacli/mpu/llama-cli}"
+LLAMA_SERVER="${LLAMA_SERVER:-./engines/llamacli/mpu/llama-server}"
 BINARY="${BINARY:-./build/qclaw}"
 GATEWAY_LOG="$QCLAW_HOME/gateway.log"
 GATEWAY_PID_FILE="$QCLAW_HOME/gateway.pid"
@@ -23,10 +24,21 @@ if [ ! -f "$BINARY" ]; then
     exit 1
 fi
 
-if [ ! -x "$LLAMA_CLI" ]; then
-    echo "Error: llama-cli not found at $LLAMA_CLI"
-    echo "Run: git submodule update --init --recursive engines/llamacli"
-    exit 1
+# Detect which provider to check based on config
+PROVIDER_PROTO=$(grep -o '"model": "[^"]*"' "$QCLAW_HOME/config.json" | head -1 | cut -d/ -f1 | cut -d: -f2 | xargs)
+
+if [[ "$PROVIDER_PROTO" == "llama-server" ]] || [[ "$PROVIDER_PROTO" == "llamaserver" ]]; then
+    if [ ! -x "$LLAMA_SERVER" ]; then
+        echo "Error: llama-server not found at $LLAMA_SERVER"
+        echo "Note: The assix submodule ships llama-cli by default. You may need to build the server from source."
+        exit 1
+    fi
+else
+    if [ ! -x "$LLAMA_CLI" ]; then
+        echo "Error: llama-cli not found at $LLAMA_CLI"
+        echo "Run: git submodule update --init --recursive engines/llamacli"
+        exit 1
+    fi
 fi
 
 if [ ! -f "$QCLAW_MODEL" ]; then
@@ -86,7 +98,7 @@ echo ""
 echo "  ┌───────────────────────────────────────────┐"
 echo "  │  🧘  Q  C  L  A  W                        │"
 echo "  │      Arduino AI Assistant                  │"
-echo "  │      (llama-cli provider, on-device)       │"
+echo "  │      ($PROVIDER_PROTO provider, on-device)  │"
 echo "  │                                            │"
 echo "  │  Type your question at 'You:' and press    │"
 echo "  │  Enter. QClaw responds in a few seconds.   │"

@@ -25,6 +25,18 @@
         "threads": 4,
         "ctx_size": 8192
       }
+    },
+    {
+      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf (Server)",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "engines/llamacli/mpu/llama-server",
+      "api_key": "local",
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 8192,
+        "port": 8080
+      }
     }
   ],
   "channels": {
