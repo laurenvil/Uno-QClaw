@@ -17,7 +17,8 @@ This run tests the new `llamaserver.WithLibraryPath` option (commit `ebadf10`) a
 | **assix-mpu** ⭐ | `engines/llamacli/mpu/llama-server` (16 MB, static, aca9a0f) | 17m54s | 427 chars ✅ | `drop unsupported device` — CPU fallback |
 | **surgical** | `llama.cpp/build/bin/llama-server` (9.8 MB, dynamic, ggml-org 832d383) | crash @ 57s | none | `enabling no-subgroups compatibility mode for FD702` → `GGML_ASSERT(0) failed at ggml-opencl.cpp:6710` mid-decode |
 | **assix-adreno** | `engines/llamacli/llama.cpp/build-adreno/bin/llama-server` (9.8 MB, dynamic, aca9a0f fresh) | hung (killed) | none | Adreno-specific kernels loaded, then `kernel compile error: use of undeclared identifier 'sub_group_reduce_add'` — server aborted, qclaw blocked on dead-server chat request |
-| **yzma** | `yzma/lib/llama-server` (9.0 MB, dynamic, hybridgroup b9127) | 16m46s | HTTP 500 ❌ | No OpenCL backend — RPC + CPU only; server returned `"Context size has been exceeded"` after 16m of decode |
+| **yzma** (first run) | `yzma/lib/llama-server` (9.0 MB, dynamic, hybridgroup b9127) | 16m46s | HTTP 500 ❌ | No OpenCL backend — RPC + CPU only; server returned `"Context size has been exceeded"` because llama-server's default `--parallel auto` split the 8192 ctx across multiple KV slots |
+| **yzma** (with `WithParallel=1`) | same binary | **14m22s** | **446 chars** ✅ | Same backends; after pinning `-np 1` the full ctx_size stays per-request and the response generates cleanly. **~20% faster than assix-mpu** on the same prompt |
 
 ⭐ = currently active in QClaw-v2 config
 
@@ -58,11 +59,11 @@ The server died after the kernel compile error. qclaw's healthcheck briefly saw 
 
 ### yzma — older hybridgroup b9127 build, no OpenCL backend
 
-Loaded cleanly (RPC + CPU armv8 backends, no OpenCL attempted), passed the health check, and processed for 16m46s before returning HTTP 500 `"Context size has been exceeded"`. The model decoded ~3300 tokens at ~3.3 t/s — consistent with its Run 5 average — but never emitted EOS, eventually exhausting the 8192-token context window allocated for the request.
+**First run failed with HTTP 500** `"Context size has been exceeded"` after 16m46s. Root cause: llama-server's `--parallel` flag defaults to `auto` (≥ 2 on recent builds), which divides the requested `--ctx-size` across multiple KV slots. With ctx_size=8192 and parallel=auto, each slot got only ~4096 tokens, and the model's decode exhausted that slot's allocation.
 
-The Run 5 9-prompt battery captured yzma at 3.39 t/s avg using shorter outputs (n_predict=128); here with the default 2048 max_tokens and the model failing to emit a stop token, it ran into the context wall. **The b9127 chat template handling differs from the modern assix server's** — possibly mismatched EOS token configuration or missing reasoning-suppression flag (yzma doesn't support `--reasoning off`).
+**Second run succeeded** after adding the new `WithParallel(1)` option to `llamaserver.Provider` (default 1, configurable via `extra_body["parallel"]`). With `-np 1` the full 8192-token context belongs to the single request, and the model decodes to its natural stopping point.
 
-For a fair comparison yzma would need either a tighter max_tokens cap (e.g. n_predict=256) or a corrected chat template. Treat the 16m46s number here as "ran but failed to produce output" rather than as a tok/s measurement.
+**Performance:** 14m22s wall, 446-char correct answer — ~20% faster than assix-mpu's 17m54s on the identical prompt. yzma's CPU-only build with the armv8 dispatch (no OpenCL overhead) wins this round on this hardware. The Run 5 9-prompt battery captured yzma at 3.39 t/s avg vs V3 assix at 3.44 t/s — that earlier near-parity reverses here on cold-cache, larger-output runs.
 
 ---
 
@@ -85,9 +86,9 @@ For a fair comparison yzma would need either a tighter max_tokens cap (e.g. n_pr
 | Can `llamaserver.Provider` host multiple engine builds via `--model`? | **Yes**, plumbing works end-to-end across four engines |
 | Does the Surgical build engage FD702? | Yes, then crashes at decode |
 | Does the Adreno-tuned assix build engage FD702? | Yes, then crashes at kernel compile (subgroup builtins in kernel source) |
-| Does yzma work via the new provider? | Server starts and processes correctly, but the b9127 chat template + missing reasoning-off support cause the model to not emit EOS → context overflow at 16m46s |
+| Does yzma work via the new provider? | **Yes after `WithParallel(1)`** — older `--parallel auto` default divided ctx_size across slots. Once pinned, yzma runs cleanly and is the **fastest CPU path** on this hardware (~20% over assix-mpu on the pwm_pins prompt) |
 | Is there a viable GPU path on this hardware today? | **No** — every OpenCL backend on this device structurally requires subgroup builtins that rusticl can't provide. The Vulkan path was already shown to engage but at 0.25 t/s (unusable) |
-| Should assix-mpu remain default? | **Yes**, no contender beats it |
+| Should the default change? | **Worth considering yzma** — it's faster on cold cache here, but Run 5's warm 9-prompt battery had assix-mpu slightly ahead. Need a controlled warm-cache battery comparison before flipping the default |
 
 The structural blocker is **rusticl's lack of `cl_khr_subgroups`**, not anything in QClaw or the engine selection logic. Two paths exist beyond this run:
 

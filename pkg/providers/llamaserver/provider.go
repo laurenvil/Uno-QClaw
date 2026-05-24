@@ -47,6 +47,7 @@ type Provider struct {
 	modelsDir   string
 	threads     int
 	ctxSize     int
+	parallel    int
 	port        int
 	host        string
 	timeout     time.Duration
@@ -78,6 +79,14 @@ func WithContextSize(n int) Option {
 	return func(p *Provider) { p.ctxSize = n }
 }
 
+// WithParallel sets the server's --parallel flag (number of KV slots).
+// Default -1 means "auto" inside llama-server, which on recent builds picks
+// a slot count > 1 and divides ctx_size per slot — surprising for a single-
+// agent setup. Pinning to 1 keeps the full ctx_size available per request.
+func WithParallel(n int) Option {
+	return func(p *Provider) { p.parallel = n }
+}
+
 func WithPort(port int) Option {
 	return func(p *Provider) { p.port = port }
 }
@@ -99,6 +108,7 @@ func NewProvider(binary string, opts ...Option) *Provider {
 		modelsDir: "~/models",
 		threads:   4,
 		ctxSize:   4096,
+		parallel:  1,
 		port:      defaultPort,
 		host:      defaultHost,
 		timeout:   20 * time.Minute, // match llamacli default for cold prefill
@@ -354,6 +364,7 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 		"--port", fmt.Sprintf("%d", p.port),
 		"-t", fmt.Sprintf("%d", p.threads),
 		"-c", fmt.Sprintf("%d", p.ctxSize),
+		"-np", fmt.Sprintf("%d", p.parallel),
 		"--reasoning", "off", // Disable Qwen 3.5 auto-<think> injection
 		"--jinja",           // Enable template-based tool calling
 		"--log-disable",     // Keep stdout clean

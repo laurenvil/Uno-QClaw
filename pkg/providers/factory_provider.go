@@ -239,11 +239,25 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 		if v, ok := cfg.ExtraBody["ctx_size"].(float64); ok {
 			opts = append(opts, llamaserver.WithContextSize(int(v)))
 		}
+		if v, ok := cfg.ExtraBody["parallel"].(float64); ok {
+			opts = append(opts, llamaserver.WithParallel(int(v)))
+		}
 		if v, ok := cfg.ExtraBody["port"].(float64); ok {
 			opts = append(opts, llamaserver.WithPort(int(v)))
 		}
 		if v, ok := cfg.ExtraBody["lib_path"].(string); ok && v != "" {
 			opts = append(opts, llamaserver.WithLibraryPath(v))
+		}
+		if raw, ok := cfg.ExtraBody["extra_args"].([]interface{}); ok {
+			args := make([]string, 0, len(raw))
+			for _, a := range raw {
+				if s, ok := a.(string); ok && s != "" {
+					args = append(args, s)
+				}
+			}
+			if len(args) > 0 {
+				opts = append(opts, llamaserver.WithExtraArgs(args))
+			}
 		}
 		if cfg.RequestTimeout > 0 {
 			opts = append(opts, llamaserver.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
