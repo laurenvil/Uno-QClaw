@@ -1,0 +1,5 @@
+ggml_opencl: selected platform: 'rusticl'
+
+ggml_opencl: device: 'FD702 (OpenCL 3.0 )'
+Unsupported GPU: FD702
+ggml_opencl: drop unsupported device.
