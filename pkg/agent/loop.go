@@ -56,10 +56,12 @@ type AgentLoop struct {
 // ProgressEvent describes a step the agent loop is taking. Callers may use
 // it to render interstitial UX (CLI spinner, Telegram edit, etc.).
 type ProgressEvent struct {
-	Kind    string // "tool_start" | "tool_done" | "tool_error" | "iteration"
-	Tool    string // tool name (when relevant)
-	Message string // human-readable summary
-	Elapsed time.Duration
+	Kind      string // "tool_start" | "tool_done" | "tool_error" | "iteration"
+	Tool      string // tool name (when relevant)
+	Message   string // human-readable summary
+	Arguments string // full JSON arguments for tool_start (verbatim, not truncated)
+	Iteration int    // 1-based agent-loop iteration number
+	Elapsed   time.Duration
 }
 
 // processOptions configures how a message is processed
@@ -709,12 +711,28 @@ func (al *AgentLoop) ProcessDirectSingleTurnStream(
 }
 
 // ProcessDirectWithProgress is ProcessDirect with a tool-progress callback.
-// onProgress (if non-nil) is invoked on tool-call boundaries inside the
-// agent loop so callers can render interstitial UX while the loop runs.
+// onProgress (if non-nil) is invoked on iteration / tool-call boundaries
+// inside the agent loop so callers can render interstitial UX.
 func (al *AgentLoop) ProcessDirectWithProgress(
 	ctx context.Context,
 	content, sessionKey string,
 	onProgress func(ProgressEvent),
+) (string, error) {
+	return al.ProcessAgenticWithProgressStream(ctx, content, sessionKey, onProgress, nil)
+}
+
+// ProcessAgenticWithProgressStream runs the full agentic loop (tools enabled)
+// and reports both iteration / tool progress (onProgress) and live model
+// tokens (onToken) to the caller. onToken fires for content deltas only —
+// tool_calls are dispatched silently and surface through onProgress instead.
+// When the active provider does not implement Streamable (or its streaming
+// path rejects the request via ErrStreamingUnsupported) onToken is never
+// invoked and the loop falls back to buffered Chat transparently.
+func (al *AgentLoop) ProcessAgenticWithProgressStream(
+	ctx context.Context,
+	content, sessionKey string,
+	onProgress func(ProgressEvent),
+	onToken func(string),
 ) (string, error) {
 	if err := al.ensureMCPInitialized(ctx); err != nil {
 		return "", err
@@ -744,6 +762,7 @@ func (al *AgentLoop) ProcessDirectWithProgress(
 		EnableSummary:    false,
 		SendResponse:     false,
 		ProgressCallback: onProgress,
+		StreamCallback:   onToken,
 	})
 }
 
@@ -1143,6 +1162,18 @@ func (al *AgentLoop) runLLMIteration(
 				"max":       maxIterations,
 			})
 
+		if opts.ProgressCallback != nil {
+			label := "Reasoning"
+			if iteration > 1 {
+				label = fmt.Sprintf("Reasoning (step %d/%d)", iteration, maxIterations)
+			}
+			opts.ProgressCallback(ProgressEvent{
+				Kind:      "iteration",
+				Iteration: iteration,
+				Message:   label,
+			})
+		}
+
 		// Build tool definitions
 		var providerToolDefs []providers.ToolDefinition
 		if !opts.Direct {
@@ -1190,19 +1221,28 @@ func (al *AgentLoop) runLLMIteration(
 			}
 		}
 
-		// Streaming is only meaningful in direct (no-tools) mode, when the
-		// caller provided a StreamCallback, and when the provider implements
-		// the Streamable interface. In every other case we fall back to the
-		// standard buffered Chat() path.
+		// Streaming engages when the caller provided a StreamCallback, the
+		// provider implements Streamable, and no fallback chain is in play.
+		// It works in both direct and agentic mode: in agentic mode the
+		// provider's ChatStream is tool-aware (content deltas stream live,
+		// tool_calls deltas accumulate and dispatch at end of stream).
+		// If the provider's streaming path can't handle the current request
+		// (e.g. llamacli streaming is text-only — returns ErrStreamingUnsupported
+		// when tools are present), we silently fall back to buffered Chat.
 		streamable, canStream := agent.Provider.(providers.Streamable)
-		useStream := opts.Direct && opts.StreamCallback != nil && canStream && len(activeCandidates) <= 1
+		useStream := opts.StreamCallback != nil && canStream && len(activeCandidates) <= 1
 
 		callLLM := func() (*providers.LLMResponse, error) {
 			al.activeRequests.Add(1)
 			defer al.activeRequests.Done()
 
 			if useStream {
-				return streamable.ChatStream(ctx, messages, activeModel, llmOpts, opts.StreamCallback)
+				resp, sErr := streamable.ChatStream(ctx, messages, providerToolDefs, activeModel, llmOpts, opts.StreamCallback)
+				if !errors.Is(sErr, providers.ErrStreamingUnsupported) {
+					return resp, sErr
+				}
+				// Streaming refused this config (e.g. tools on a text-only
+				// streaming backend). Fall through to buffered Chat below.
 			}
 
 			if len(activeCandidates) > 1 && al.fallback != nil {
@@ -1420,9 +1460,11 @@ func (al *AgentLoop) runLLMIteration(
 				toolStart := time.Now()
 				if opts.ProgressCallback != nil {
 					opts.ProgressCallback(ProgressEvent{
-						Kind:    "tool_start",
-						Tool:    tc.Name,
-						Message: fmt.Sprintf("Calling %s(%s)", tc.Name, argsPreview),
+						Kind:      "tool_start",
+						Tool:      tc.Name,
+						Iteration: iteration,
+						Message:   fmt.Sprintf("Calling %s(%s)", tc.Name, argsPreview),
+						Arguments: string(argsJSON),
 					})
 				}
 
@@ -1487,10 +1529,11 @@ func (al *AgentLoop) runLLMIteration(
 						msg = fmt.Sprintf("%s failed: %s", tc.Name, toolResult.Err.Error())
 					}
 					opts.ProgressCallback(ProgressEvent{
-						Kind:    kind,
-						Tool:    tc.Name,
-						Message: msg,
-						Elapsed: time.Since(toolStart),
+						Kind:      kind,
+						Tool:      tc.Name,
+						Iteration: iteration,
+						Message:   msg,
+						Elapsed:   time.Since(toolStart),
 					})
 				}
 			}(i, tc)

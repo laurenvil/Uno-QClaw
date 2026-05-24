@@ -8,17 +8,23 @@
 package llamaserver
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/laurenvil/Uno-QClaw/pkg/logger"
+	"github.com/laurenvil/Uno-QClaw/pkg/providers/common"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/openai_compat"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/protocoltypes"
 )
@@ -118,6 +124,188 @@ func (p *Provider) Chat(
 
 func (p *Provider) GetDefaultModel() string {
 	return ""
+}
+
+// ChatStream implements providers.Streamable for the persistent llama-server.
+// It POSTs a streaming /v1/chat/completions request and reads the
+// OpenAI-style SSE response, dispatching content deltas live to onToken and
+// accumulating tool_calls deltas indexed by their slot. The assembled
+// LLMResponse — content + tool_calls — is returned when [DONE] arrives.
+//
+// Tool-aware: when tools are passed, llama-server is asked to choose among
+// them (tool_choice: auto). The model may emit text, tool_calls, or both
+// in one response — content streams to the user immediately; tool_calls
+// stay buffered until the stream completes so the agent loop can dispatch
+// them as a unit.
+func (p *Provider) ChatStream(
+	ctx context.Context,
+	messages []Message,
+	tools []ToolDefinition,
+	model string,
+	options map[string]any,
+	onToken func(string),
+) (*LLMResponse, error) {
+	if err := p.ensureServer(ctx, model); err != nil {
+		return nil, fmt.Errorf("llama-server initialization failed: %w", err)
+	}
+
+	// Strip protocol prefix ("llama-server/modelname" → "modelname").
+	if _, after, ok := strings.Cut(model, "/"); ok {
+		model = after
+	}
+
+	body := map[string]any{
+		"model":    model,
+		"messages": common.SerializeMessages(messages),
+		"stream":   true,
+	}
+	if len(tools) > 0 {
+		body["tools"] = tools
+		body["tool_choice"] = "auto"
+	}
+	if n, ok := common.AsInt(options["max_tokens"]); ok && n > 0 {
+		body["max_tokens"] = n
+	}
+	if t, ok := common.AsFloat(options["temperature"]); ok {
+		body["temperature"] = t
+	}
+
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal stream request: %w", err)
+	}
+
+	url := fmt.Sprintf("http://%s:%d/v1/chat/completions", p.host, p.port)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+
+	// No client timeout — context cancellation handles it.
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("stream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("llama-server returned %d: %s", resp.StatusCode, errBody)
+	}
+
+	type tcAccum struct {
+		id        string
+		typ       string
+		name      string
+		arguments strings.Builder
+	}
+
+	var (
+		contentSB    strings.Builder
+		finishReason string
+		toolAccs     = map[int]*tcAccum{}
+	)
+
+	scanner := bufio.NewScanner(resp.Body)
+	// Generous buffer — individual SSE lines stay small but tool_calls deltas
+	// with long argument payloads occasionally push past the default 64 KiB.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := line[6:]
+		if payload == "[DONE]" {
+			break
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id,omitempty"`
+						Type     string `json:"type,omitempty"`
+						Function struct {
+							Name      string `json:"name,omitempty"`
+							Arguments string `json:"arguments,omitempty"`
+						} `json:"function"`
+					} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		choice := chunk.Choices[0]
+
+		if tok := choice.Delta.Content; tok != "" {
+			contentSB.WriteString(tok)
+			if onToken != nil {
+				onToken(tok)
+			}
+		}
+
+		for _, dtc := range choice.Delta.ToolCalls {
+			acc, ok := toolAccs[dtc.Index]
+			if !ok {
+				acc = &tcAccum{}
+				toolAccs[dtc.Index] = acc
+			}
+			if dtc.ID != "" {
+				acc.id = dtc.ID
+			}
+			if dtc.Type != "" {
+				acc.typ = dtc.Type
+			}
+			if dtc.Function.Name != "" {
+				acc.name = dtc.Function.Name
+			}
+			if dtc.Function.Arguments != "" {
+				acc.arguments.WriteString(dtc.Function.Arguments)
+			}
+		}
+
+		if choice.FinishReason != "" {
+			finishReason = choice.FinishReason
+		}
+	}
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		return nil, fmt.Errorf("stream read error: %w", err)
+	}
+
+	resp_ := &LLMResponse{
+		Content:      contentSB.String(),
+		FinishReason: finishReason,
+	}
+	if len(toolAccs) > 0 {
+		// Emit in index order so tool dispatch is deterministic.
+		indices := make([]int, 0, len(toolAccs))
+		for i := range toolAccs {
+			indices = append(indices, i)
+		}
+		sort.Ints(indices)
+		for _, i := range indices {
+			acc := toolAccs[i]
+			resp_.ToolCalls = append(resp_.ToolCalls, protocoltypes.ToolCall{
+				ID:   acc.id,
+				Type: acc.typ,
+				Function: &protocoltypes.FunctionCall{
+					Name:      acc.name,
+					Arguments: acc.arguments.String(),
+				},
+			})
+		}
+	}
+	return resp_, nil
 }
 
 func (p *Provider) Close() {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ergochat/readline"
 
@@ -18,16 +19,27 @@ import (
 	"github.com/laurenvil/Uno-QClaw/pkg/providers"
 )
 
-// runAgenticTurn runs one turn of the agentic CLI with a thinking spinner
-// that shows live tool-call progress and elapsed time.
+// runAgenticTurn runs one turn of the agentic CLI with a thinking spinner,
+// live iteration / tool-call progress, and — when the active provider
+// supports tool-aware streaming — live tokens for the model's final text
+// turn. If streaming never engages (provider returns ErrStreamingUnsupported
+// or only emitted tool_calls in this turn) the buffered response is printed
+// at the end instead.
 func runAgenticTurn(ctx context.Context, agentLoop *agent.AgentLoop, input, sessionKey string) (string, error) {
 	spin := startSpinner("QClaw is thinking…")
+	var firstToken atomic.Bool
 
 	progress := func(ev agent.ProgressEvent) {
 		spin.Clear()
 		switch ev.Kind {
+		case "iteration":
+			// Quietly retitle the spinner; do not print a line so the
+			// transcript stays focused on tool actions and the answer.
+			if ev.Iteration > 1 {
+				spin.SetLabel(fmt.Sprintf("QClaw is thinking (step %d)…", ev.Iteration))
+			}
 		case "tool_start":
-			fmt.Fprintf(os.Stderr, "  🔧 %s\n", ev.Message)
+			fmt.Fprintf(os.Stderr, "  🔧 [iter %d] %s(%s)\n", ev.Iteration, ev.Tool, ev.Arguments)
 			spin.SetLabel(fmt.Sprintf("Running %s…", ev.Tool))
 		case "tool_done":
 			fmt.Fprintf(os.Stderr, "  ✓  %s (%s)\n", ev.Message, ev.Elapsed.Round(100*1000*1000))
@@ -38,13 +50,28 @@ func runAgenticTurn(ctx context.Context, agentLoop *agent.AgentLoop, input, sess
 		}
 	}
 
-	response, err := agentLoop.ProcessDirectWithProgress(ctx, input, sessionKey, progress)
+	onToken := func(tok string) {
+		if firstToken.CompareAndSwap(false, true) {
+			spin.Stop()
+			fmt.Print("\nQClaw: ")
+		}
+		fmt.Print(tok)
+	}
+
+	response, err := agentLoop.ProcessAgenticWithProgressStream(ctx, input, sessionKey, progress, onToken)
 	elapsed := spin.Elapsed()
 	spin.Stop()
 	if err != nil {
 		return "", err
 	}
-	fmt.Printf("\nQClaw: %s\n  ⏱  %s\n\n", response, elapsed.Round(100*1000*1000))
+
+	// If streaming never engaged for the final text turn (provider doesn't
+	// support tool-aware streaming, or this turn was tool-calls only), print
+	// the full assembled response now so the user sees something.
+	if !firstToken.Load() {
+		fmt.Printf("\nQClaw: %s", response)
+	}
+	fmt.Printf("\n  ⏱  %s\n\n", elapsed.Round(100*1000*1000))
 	return response, nil
 }
 

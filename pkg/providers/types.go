@@ -47,17 +47,25 @@ type ThinkingCapable interface {
 // Streamable is an optional interface for providers that can stream tokens
 // as they are generated. onToken is called with each text fragment in order;
 // the final assembled LLMResponse is returned when generation completes.
-// Intended for the direct (no-tools) path — providers may reject calls when
-// tools are passed alongside.
+//
+// Implementations may accept tools — for tool-aware streaming (OpenAI-style
+// SSE with tool_calls deltas) — or refuse with ErrStreamingUnsupported when
+// tools are passed to a text-only streaming backend. Callers treat that
+// sentinel as a signal to fall back to the buffered Chat() path silently.
 type Streamable interface {
 	ChatStream(
 		ctx context.Context,
 		messages []Message,
+		tools []ToolDefinition,
 		model string,
 		options map[string]any,
 		onToken func(string),
 	) (*LLMResponse, error)
 }
+
+// ErrStreamingUnsupported is re-exported from protocoltypes so callers can
+// check for it without importing the leaf types package directly.
+var ErrStreamingUnsupported = protocoltypes.ErrStreamingUnsupported
 
 // FailoverReason classifies why an LLM request failed for fallback decisions.
 type FailoverReason string

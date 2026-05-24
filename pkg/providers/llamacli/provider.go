@@ -174,18 +174,24 @@ func (p *Provider) Chat(
 }
 
 // ChatStream invokes the binary and reports text tokens to onToken as the
-// model emits them. It is intended for the direct (no-tools) path: the
-// grammar is fixed to the text envelope so the response is parsed
-// incrementally without waiting for process exit.
+// model emits them. It is text-only: the GBNF grammar is fixed to the text
+// envelope so the response can be parsed incrementally without waiting for
+// process exit. If the caller passes any tools, ChatStream returns
+// protocoltypes.ErrStreamingUnsupported and the agent loop falls back to
+// the buffered Chat() path which builds a tool-aware grammar.
 //
 // Returns the fully assembled LLMResponse after the subprocess exits.
 func (p *Provider) ChatStream(
 	ctx context.Context,
 	messages []Message,
+	tools []ToolDefinition,
 	model string,
 	options map[string]any,
 	onToken func(string),
 ) (*LLMResponse, error) {
+	if len(tools) > 0 {
+		return nil, protocoltypes.ErrStreamingUnsupported
+	}
 	if p.binary == "" {
 		return nil, errors.New("llama-cli binary path not configured")
 	}
