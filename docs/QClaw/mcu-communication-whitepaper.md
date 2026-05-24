@@ -152,19 +152,24 @@ This sequence:
 
 ---
 
-## 4. Comparison: Direct SWD vs. Remote-OCD (`remoteocd`)
+## 4. Comparison: Direct SWD vs. `remoteocd`
 
-Arduino provides a utility called `remoteocd` (often stylized as `remote-ocd`) for remote firmware deployment. It is critical to compare how QClaw v3's direct approach compares to the `remoteocd` utility:
+Arduino provides a utility called `remoteocd` for firmware deployment on the Uno Q. It is important to note that `remoteocd` supports **both local and remote execution**: its source includes a `LocalCmd{}` branch that runs the flashing pipeline directly on the QRB2210 MPU without any external host or SSH tunnel. So at the hardware layer, both approaches terminate at the same `linuxgpiod` → SWD → STM32U585 path.
 
-| Capability / Metric | QClaw v3 Direct SWD (`openocd`) | Arduino `remoteocd` Utility |
+The meaningful differences are in the software layers above that shared hardware interface:
+
+| Capability / Metric | QClaw v3 Direct SWD (`openocd`) | Arduino `remoteocd` / `arduino-cli --upload` |
 | :--- | :--- | :--- |
-| **Execution Context** | Runs purely on the local QRB2210 MPU. | Usually designed to tunnel commands from an external PC to the board. |
-| **Network Reliance** | **None.** Operates completely offline, making it ideal for standard offline deployments. | Requires an active ADB connection or SSH network credentials to complete. |
-| **Overhead** | Minimal. Direct system calls to OpenOCD via `/opt/openocd/bin/openocd`. | Adds substantial wrapping layers for network protocols and credential handshakes. |
-| **Security Surface** | **Zero-Trust Local.** No remote ports opened, no credentials stored in the clear. | Opens remote listener capability on SSH/ADB, creating potential local network vulnerabilities. |
-| **Address Safety** | Bypasses standard wrapper bugs to map sketches to target partition `0x8100000`. | Relies on high-level board core scripts which can sometimes default to buggy flashing scripts. |
+| **Execution Context** | Runs purely on the local QRB2210 MPU via direct OpenOCD invocation. | Supports both local (`LocalCmd{}`) and remote (SSH/ADB tunnel) execution modes. |
+| **Network Reliance** | **None.** Invokes OpenOCD as a direct child process with no sockets or daemons. | Local mode requires no network; remote mode requires SSH/ADB credentials and an active connection. `arduino-cli upload` defaults to `--protocol network`, which opens an SSH session even to localhost. |
+| **Overhead** | Minimal. One process fork to `/opt/openocd/bin/openocd` with a scripted command sequence. | Adds wrapping layers through `arduino-cli` → `remoteocd` → OpenOCD, plus any credential handshake in remote mode. |
+| **Security Surface** | **Zero-Trust Local.** No remote ports opened, no credentials stored or transmitted. | Remote mode opens an SSH/ADB listener; local mode is equivalent in security posture to our approach. |
+| **Address Safety** | Bypasses the stock `arduino-flash` wrapper bug — flashes directly to the correct sketch partition at `0x8100000`. | Delegates to board-core upload scripts, which invoke the pre-installed `arduino-flash` wrapper and inherit its hardcoded `0x80F0000` address bug. Sketches appear to flash successfully but never execute. |
+| **Agentic Reliability** | Fully non-interactive. Compile errors and flash errors both surface as structured output to the agent. | In non-interactive contexts (no TTY), any SSH credential prompt causes the upload step to hang or exit with an authentication error, breaking the agent loop. |
 
-By utilizing direct local OpenOCD flashing, QClaw v3 achieves **sub-second flashing execution** once the binary is compiled, avoiding the credentials, handshakes, and timeouts associated with SSH-based uploading models.
+The decisive advantage of QClaw's direct path is not that it avoids `remoteocd`'s execution model — local `remoteocd` is architecturally comparable — but that it sidesteps the address bug in the stock `arduino-flash` wrapper and eliminates the SSH credential requirement that makes `arduino-cli upload` unreliable in non-interactive agent contexts.
+
+By utilizing direct local OpenOCD flashing, QClaw v3 achieves **sub-second flashing execution** once the binary is compiled, with no external dependencies and correct memory alignment guaranteed.
 
 ---
 
