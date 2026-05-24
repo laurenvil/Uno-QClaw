@@ -51,7 +51,8 @@ type Provider struct {
 	host        string
 	timeout     time.Duration
 	extraArgs   []string
-	
+	libraryPath string
+
 	// Internal state
 	cmd         *exec.Cmd
 	inner       *openai_compat.Provider
@@ -83,6 +84,13 @@ func WithPort(port int) Option {
 
 func WithExtraArgs(args []string) Option {
 	return func(p *Provider) { p.extraArgs = args }
+}
+
+// WithLibraryPath prepends a directory to LD_LIBRARY_PATH when spawning the
+// llama-server subprocess. Required for dynamically-linked builds whose
+// ggml/llama .so files live next to the binary instead of a system path.
+func WithLibraryPath(path string) Option {
+	return func(p *Provider) { p.libraryPath = path }
 }
 
 func NewProvider(binary string, opts ...Option) *Provider {
@@ -359,9 +367,17 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 	})
 	
 	cmd := exec.Command(p.binary, args...)
+	if p.libraryPath != "" {
+		existing := os.Getenv("LD_LIBRARY_PATH")
+		ldPath := p.libraryPath
+		if existing != "" {
+			ldPath = p.libraryPath + ":" + existing
+		}
+		cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+ldPath)
+	}
 	// Redirect logs to nowhere or a file if we wanted
-	cmd.Stderr = os.Stderr 
-	
+	cmd.Stderr = os.Stderr
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start llama-server: %w", err)
 	}

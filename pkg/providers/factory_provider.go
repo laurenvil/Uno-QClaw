@@ -242,6 +242,9 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 		if v, ok := cfg.ExtraBody["port"].(float64); ok {
 			opts = append(opts, llamaserver.WithPort(int(v)))
 		}
+		if v, ok := cfg.ExtraBody["lib_path"].(string); ok && v != "" {
+			opts = append(opts, llamaserver.WithLibraryPath(v))
+		}
 		if cfg.RequestTimeout > 0 {
 			opts = append(opts, llamaserver.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
 		}

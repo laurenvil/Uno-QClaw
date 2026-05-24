@@ -5,7 +5,7 @@
       "workspace": "~/.qclaw/workspace",
       "restrict_to_workspace": false,
       "allow_read_outside_workspace": true,
-      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "model_name": "assix-mpu",
       "max_tokens": 2048,
       "temperature": 0.3,
       "max_tool_iterations": 8,
@@ -15,7 +15,7 @@
   },
   "model_list": [
     {
-      "model_name": "Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "model_name": "assix-mpu",
       "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
       "api_base": "engines/llamacli/mpu/llama-server",
       "api_key": "local",
@@ -23,8 +23,22 @@
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 8192,
+        "ctx_size": 12288,
         "port": 8080
+      }
+    },
+    {
+      "model_name": "surgical",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 12288,
+        "port": 8081,
+        "lib_path": "/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin"
       }
     }
   ],
