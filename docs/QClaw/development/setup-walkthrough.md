@@ -4,8 +4,8 @@ Step-by-step guide to run QClaw on an Arduino Uno Q — from a fresh board to a 
 
 v3 ships **two execution paths**, both backed by the in-tree `pkg/providers/llamacli` which spawns the precompiled `engines/llamacli/mpu/llama-cli` (assix) as a subprocess per `Chat()`:
 
-- **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 8 tools (read/write/list/arduino/camera/sysfs_led/network/i2cdetect); can compile and flash sketches end-to-end. **This is the supported path on `qclaw-llamaCLI`.**
-- **Direct** (`make qclaw-direct`) — disabled on `qclaw-llamaCLI`. The original direct path was a Python REPL that POSTed to the long-lived `llama-server`; without a persistent server it has no endpoint to talk to. `scripts/qclaw-launch-direct.sh` exits with a redirect to `make qclaw-agentic`.
+- **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 8 tools (read/write/list/arduino/camera/sysfs_led/network/i2cdetect); can compile and flash sketches end-to-end.
+- **Direct** (`make qclaw-direct` / `qclaw direct`) — native Go implementation (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`). Same 23-rule pre-router + 15-skill tree, single LLM call, no tools, no loop. Fast Q&A across all 15 skills; cannot compile or flash sketches.
 
 See `docs/QClaw/whitepaper.md` and `docs/GPU/llama-cli-provider-whitepaper.md` for the design rationale.
 
@@ -163,26 +163,17 @@ You: Use the arduino tool to upload a blink sketch for D9 to the board.
 QClaw: [calls arduino tool → compiles → flashes → confirms]
 ```
 
-### Path B — Direct — disabled on `qclaw-llamaCLI`
+### Path B — Direct (`make qclaw-direct`)
 
 ```bash
 make qclaw-direct
-# qclaw-direct is not available in the QClaw-Client branch.
-# This branch uses the llama-cli provider (pkg/providers/llamacli), which spawns
-# mpu/llama-cli per Chat() call instead of running a persistent llama-server.
-# The direct path was an HTTP client tied to the server, so it has no endpoint
-# to talk to here.
-#
-# Run the agentic path instead:
-#   make qclaw-agentic
 ```
 
-Re-enabling a direct path under the llama-cli provider would mean porting
-the Python pre-router + chat loop to call the Go `llamacli.Provider`
-directly (or shelling out to a small `qclaw-direct` subcommand that builds
-a single-turn prompt and prints the response). Tracked as a follow-up.
+Starts a single-turn terminal session. The direct path is a native Go feature — `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, invoked via the `direct` subcommand (`cmd/qclaw/internal/agent/direct.go`). It applies the same 23-rule pre-router and 15-skill tree as the agentic path, makes a single LLM call, prints the response, and exits. No tools, no agent loop, no Telegram gateway — terminal only.
 
-Press `Ctrl+C` in the agentic terminal to stop cleanly.
+Use it for fast factual Q&A, pinout lookups, and sketch generation where you intend to copy the code into the Arduino IDE manually. For anything requiring compile or flash, use Path A.
+
+Press `Ctrl+C` to stop cleanly (either path).
 
 ---
 
@@ -220,7 +211,7 @@ To verify the flash actually worked, watch the board's LED matrix or measure the
 |---|---|
 | `make qclaw` | Default — alias for `qclaw-agentic` |
 | `make qclaw-agentic` | **Agentic path**: agent loop + 23-rule pre-router + 8 tools (compile/upload + camera + sysfs_led + network + i2cdetect + filesystem) |
-| `make qclaw-direct` | **Disabled** on `qclaw-llamaCLI`: prints a redirect and exits |
+| `make qclaw-direct` | **Direct path**: pre-router + single LLM call, no tools — fast Q&A (terminal only) |
 | `make qclaw-install` | Full first-time setup (build + workspace + arduino-cli + wizard) |
 | `make qclaw-onboard` | Re-run setup wizard (change Telegram token, allow list) |
 | `make qclaw-setup` | Reinstall system prompt and skills tree after a git pull |
@@ -232,11 +223,7 @@ To verify the flash actually worked, watch the board's LED matrix or measure the
 
 ## Auto-start on Boot (Optional)
 
-On the `qclaw-llamaCLI` track there is **no inference daemon to enable** —
-inference is in-process: each `Chat()` is a one-shot subprocess of
-`engines/llamacli/mpu/llama-cli`. What you can autostart is the QClaw
-*gateway* (which receives Telegram/IRC/Matrix/etc. messages and feeds the
-agent loop):
+There is **no inference daemon to enable** — inference is in-process: each `Chat()` is a one-shot subprocess of `engines/llamacli/mpu/llama-cli`. What you can autostart is the QClaw *gateway* (which receives Telegram/IRC/Matrix/etc. messages and feeds the agent loop):
 
 ```ini
 # /etc/systemd/system/qclaw-gateway.service

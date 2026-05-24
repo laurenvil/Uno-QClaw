@@ -4,7 +4,7 @@ How QClaw turns a user's natural language question into working Arduino code on 
 
 **v3 architecture summary:** QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
 - **Agentic** — agent loop + 23-rule pre-router + **8 tools** (`read_file`, `write_file`, `list_dir`, `arduino`, `camera`, `sysfs_led`, `network`, `i2cdetect`). End-to-end compile/flash, camera capture, MPU LED control, network diagnostics, I²C bus scan. `make qclaw-agentic` / `make qclaw`.
-- **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills; cannot perform hardware actions. `make qclaw-direct`.
+- **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills; cannot perform hardware actions. `make qclaw-direct` / `qclaw direct` (native Go: `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, `cmd/qclaw/internal/agent/direct.go`).
 
 The 15 skills are organized into three domains:
 - **Sketch-side** (MCU): `sketch-patterns`, `led-matrix`, `uno-q-hardware`
@@ -227,15 +227,14 @@ The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` a
 
 v3 has two execution paths. They share the same `engines/llamacli` engine, model, system prompt, and skills tree — they differ in what surrounds the LLM call.
 
-> **`qclaw-llamaCLI` track update.** The original v3 design ran a single
-> long-lived `llama-server` and routed both paths through it over loopback
-> HTTP. The current track replaces that with `pkg/providers/llamacli`, a Go
+> **Implementation note.** Both paths use `pkg/providers/llamacli`, a Go
 > driver that `fork+exec`s the precompiled `engines/llamacli/mpu/llama-cli`
 > (assix) **once per `Chat()` call**. There is no persistent server; the
 > agent process and the inference engine share the same process tree.
-> Path A below is updated accordingly. Path B's Python REPL was an HTTP
-> client to that retired server and is disabled on this track (see
-> `scripts/qclaw-launch-direct.sh`).
+> The direct path is a native Go feature (`ProcessDirectSingleTurn` in
+> `pkg/agent/loop.go`) — it is not the retired Python REPL
+> (`qclaw-direct-chat.py`) that previously POSTed to a long-lived
+> `llama-server`. Both paths are active.
 
 ### Path A — Agentic (`make qclaw-agentic`)
 
@@ -327,37 +326,31 @@ AgentLoop publishes OutboundMessage to bus
 Channel adapter sends message back to user
 ```
 
-### Path B — Direct (`make qclaw-direct`) — disabled on `qclaw-llamaCLI`
+### Path B — Direct (`make qclaw-direct`)
 
-The direct path was a Python REPL (`scripts/qclaw-direct-chat.py`) that
-applied the same 23-rule pre-router and then `urllib.request.urlopen()`'d
-the OpenAI-compatible `/v1/chat/completions` endpoint on the long-lived
-`llama-server`. On the `qclaw-llamaCLI` track that server doesn't exist
-any more — every `Chat()` is a one-shot subprocess of `mpu/llama-cli` —
-so there is no HTTP endpoint for the Python REPL to talk to.
-
-`scripts/qclaw-launch-direct.sh` now prints a redirect to
-`make qclaw-agentic` and exits with code 2. Re-enabling a direct path
-under the CLI provider would mean porting the Python pre-router + chat
-loop to call the Go `llamacli.Provider` directly (or shelling out to a
-small `qclaw-direct` subcommand that constructs the provider, builds a
-single-turn prompt, and prints the response).
-
-If you arrived here looking for the direct path's historical shape, the
-flow was:
+The direct path is a native Go feature introduced after the `qclaw-llamaCLI` track replaced the retired `llama-server`. It is implemented as the `direct` subcommand in `cmd/qclaw/internal/agent/direct.go`, which calls `ProcessDirectSingleTurn` in `pkg/agent/loop.go`.
 
 ```
-User types in REPL → qclaw-direct-chat.py
-    │ preload_for_message()  ← 23 pre-router rules, Python port
-    │ build_system_prompt()  ← SOUL.md + STOP preamble, no <skills>, no tools
-    │ urllib.request.urlopen() → POST /v1/chat/completions on the
-    │   long-lived llama-server (yzma/lib/llama-server, llama.cpp b9127)
-    │ Single LLM response → printed to terminal
+User types question (terminal only)
+    │
+    ▼
+cmd/qclaw/internal/agent/direct.go  ← `qclaw direct` / `make qclaw-direct`
+    │
+    ▼
+ProcessDirectSingleTurn()  (pkg/agent/loop.go)
+    │ Skips the agentic loop and all tool definitions
+    │ Applies the same 23-rule pre-router (PreloadSkillsForMessage)
+    │ Builds the system prompt (SOUL.md + STOP preamble + skills index)
+    │   — no tool schema appended
+    ▼
+llamacli.Provider.Chat()  (pkg/providers/llamacli/provider.go)
+    │ fork+exec engines/llamacli/mpu/llama-cli (same binary as Path A)
+    │ Single LLM call, no GBNF tool envelope — plain text response
+    ▼
+Single response printed to terminal → exit
 ```
 
-The direct path always **could not** compile, upload, or call any tool —
-sketches came back as text. For all current use cases (this track and
-forward), use Path A.
+The direct path **cannot** compile, upload, or call any tool — sketches come back as text. Its advantage: no tool-schema overhead (~1,800 chars saved from the system prompt) and no multi-iteration loop overhead, yielding ~33% lower latency on factual prompts vs. the agentic path at 0.8B scale.
 
 ### End-to-End Timing Budget (v3 measured)
 
@@ -372,7 +365,7 @@ Walltimes from Agentic (agentic) and Direct (direct) evaluations on Qwen_Qwen3.5
 | Full sketch (breathe) | ~13 min | **~11 min** | Direct ~15% faster |
 | Sketch + compile + flash (LED matrix) | **~20 min** ✅ (with flash) | ~13 min ❌ (text only) | Only agentic can actually flash the board |
 
-**Aggregate (9 prompts, 0.8B):** Agentic averages ~12 min/cell with compile+upload capability; Direct averages ~10 min/cell with text-only output. Direct is ~33% faster on the factual prompts but produces broken sketches on the LED matrix and compile_blink prompts where the agent loop's response-format scaffolding matters.
+**Aggregate (9 prompts, 0.8B):** Agentic averages ~12 min/cell with compile+upload capability; Direct averages ~10 min/cell with text-only output. Direct is ~33% faster on factual prompts — the tool-schema savings (~1,800 chars) reduce prefill time noticeably on the Cortex-A53. On the LED-matrix and compile_blink prompts, the agent loop's response-format scaffolding matters — agentic produces better structured output even before the tool call.
 
 ---
 
@@ -612,12 +605,14 @@ The capability matrix depends on which execution path is active.
 
 ### Direct path (`make qclaw-direct`)
 
+Native Go implementation — `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, `direct` subcommand in `cmd/qclaw/internal/agent/direct.go`.
+
 | Capability | How |
 |-----------|-----|
 | Generates Arduino sketches | LLM text generation, with pre-router-loaded canonical templates (returned as text — user copies into the Arduino IDE or App Lab) |
 | Explains hardware concepts | Same 23 pre-router rules as agentic, covering all 15 skills; returns the answer directly |
 | Bridge / wireless / vision / audio / Modulino patterns | Pre-router inlines the relevant skill content; the model returns example code and explanations |
-| Fast factual Q&A | Single LLM call, no tool round-trips; ~33% lower latency on factual prompts |
+| Fast factual Q&A | Single LLM call, no tool round-trips; ~33% lower latency on factual prompts — tool-schema overhead (~1,800 chars) eliminated |
 
 ### What QClaw Cannot Do (either path)
 

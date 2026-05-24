@@ -311,3 +311,4 @@ source tree is enough to do this without checking out anything else.
 |---|---|---|
 | `QClaw-Client-V2` | OpenCL (Wang + v4.4) and Vulkan (Sensai v5) GPU variants alongside this CPU baseline | `docs/GPU/v2/benchmark-results.md` |
 | `QClaw-GPU-CLI` | Broader GPU experiment notes | branch HEAD |
+| `QClaw-v2` | Direct path re-enabled as native Go (`ProcessDirectSingleTurn` / `qclaw direct`); benchmark runs 1–5 under `docs/QClaw/v2/benchmarks/` | `docs/GPU/V3/direct-path-implementation.md` |

@@ -62,9 +62,10 @@ make qclaw-install
 
 # Start a session
 make qclaw-agentic    # full agent loop + 8 tools (compile/upload/camera/sysfs_led/network/i2cdetect)
+make qclaw-direct     # pre-router + single LLM call, no tools — fast Q&A
 ```
 
-`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`. Note that on the `qclaw-llamaCLI` track the *direct* path is disabled — see [Two Execution Paths](#two-execution-paths) below.
+`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`.
 
 ---
 
@@ -86,9 +87,9 @@ Both paths share the same `engines/llamacli` engine, the same `SOUL.md`, and the
 | Telegram gateway | ✅ | ❌ (terminal only) |
 | Best for | Hardware actions, multi-step workflows | Fast factual Q&A across all 15 skills |
 
-> **Note (qclaw-llamaCLI track):** the direct path's Python REPL (`qclaw-direct-chat.py`) was a thin OpenAI-compatible HTTP client pointed at the now-retired `llama-server`. With the llama-cli provider spawning a subprocess per `Chat()` call there is no HTTP endpoint for it to talk to, so `make qclaw-direct` is disabled on this track ([`scripts/qclaw-launch-direct.sh`](scripts/qclaw-launch-direct.sh) prints a redirect and exits). Use `make qclaw-agentic` for everything.
+The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. Use the direct path for fast factual Q&A and sketch generation (text-only); use the agentic path whenever you need to compile, flash, or call any hardware tool.
 
-The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. The pre-router alone is necessary but not sufficient for harder prompts at 0.8B scale.
+The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. The pre-router alone is necessary but not sufficient for harder prompts at 0.8B scale — use agentic mode for anything beyond simple Q&A.
 
 ---
 
@@ -158,10 +159,11 @@ See [`docs/QClaw/mcu-communication-whitepaper.md`](docs/QClaw/mcu-communication-
 │                                                                │
 │  Direct path                                                   │
 │  ┌────────────────────────────────────────────────────┐       │
-│  │ qclaw-direct-chat.py (DISABLED on qclaw-llamaCLI)   │       │
-│  │   was a Python REPL that POSTed to llama-server's   │       │
-│  │   /v1/chat/completions; with no server to talk to,  │       │
-│  │   the script exits with a redirect to `qclaw-agentic`│      │
+│  │ qclaw direct  (native Go — cmd/qclaw/internal/      │       │
+│  │               agent/direct.go)                      │       │
+│  │   └── pre-router (23 rules, 15 skills)              │       │
+│  │   └── ProcessDirectSingleTurn()  (pkg/agent/loop.go)│       │
+│  │       single LLM call, no tools, no loop            │       │
 │  └────────────────────────────────────────────────────┘       │
 │                                                                │
 │                                fork+exec per Chat()            │
