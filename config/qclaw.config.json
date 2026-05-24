@@ -40,6 +40,34 @@
         "port": 8081,
         "lib_path": "/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin"
       }
+    },
+    {
+      "model_name": "assix-adreno",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "/home/arduino/ArduinoApps/qclaw/engines/llamacli/llama.cpp/build-adreno/bin/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 12288,
+        "port": 8082,
+        "lib_path": "/home/arduino/ArduinoApps/qclaw/engines/llamacli/llama.cpp/build-adreno/bin"
+      }
+    },
+    {
+      "model_name": "yzma",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "/home/arduino/ArduinoApps/yzma/lib/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 12288,
+        "port": 8083,
+        "lib_path": "/home/arduino/ArduinoApps/yzma/lib"
+      }
     }
   ],
   "channels": {

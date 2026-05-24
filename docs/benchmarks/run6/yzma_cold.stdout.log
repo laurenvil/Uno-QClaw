@@ -1,0 +1,12 @@
+
+██╗   ██╗ ███╗   ██╗  ██████╗   ██████╗  ██████╗██╗      █████╗ ██╗    ██╗
+██║   ██║ ████╗  ██║ ██╔═══██╗ ██╔═══██╗██╔════╝██║     ██╔══██╗██║    ██║
+██║   ██║ ██╔██╗ ██║ ██║   ██║ ██║   ██║██║     ██║     ███████║██║ █╗ ██║
+██║   ██║ ██║╚██╗██║ ██║   ██║ ██║▄▄ ██║██║     ██║     ██╔══██║██║███╗██║
+╚██████╔╝ ██║ ╚████║ ╚██████╔╝ ╚██████╔╝╚██████╗███████╗██║  ██║╚███╔███╔╝
+ ╚═════╝  ╚═╝  ╚═══╝  ╚═════╝   ╚══▀▀═╝  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+ 
+22:33:39 INF agent  registry.go:38 (agent.NewAgentRegistry) > Created implicit main agent (no agents.list configured)
+
+QClaw (direct): 22:33:39 INF llamaserver provider.go:363 (llamaserver.(*Provider).ensureServer) > Starting persistent llama-server binary=/home/arduino/ArduinoApps/yzma/lib/llama-server model=Qwen_Qwen3.5-0.8B-Q4_0.gguf port=8083
+22:50:25 ERR agent  loop.go:1342 (agent.(*AgentLoop).runLLMIteration) > LLM call failed error="llama-server returned 500: {\"error\":{\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}}" agent_id=main iteration=1 model=Qwen_Qwen3.5-0.8B-Q4_0.gguf

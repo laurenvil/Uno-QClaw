@@ -1,4 +1,4 @@
-# Run 6 — Three-Engine Comparison on FD702 (rusticl)
+# Run 6 — Four-Engine Comparison on FD702 (rusticl)
 
 **Hardware:** Arduino Uno Q · Qualcomm QRB2210 · 4× Cortex-A53 · 4 GB LPDDR4X
 **Driver:** Mesa rusticl 25.2.6 · OpenCL 3.0 on Adreno 702 (reported as `FD702`)
@@ -6,7 +6,7 @@
 **Prompt:** `"Which pins on the Uno Q can do PWM?"` (10 input tokens)
 **Date:** 2026-05-24
 
-This run tests the new `llamaserver.WithLibraryPath` option (commit `ebadf10`) and exercises three engine builds through the same provider code path, switching purely by `--model` flag.
+This run tests the new `llamaserver.WithLibraryPath` option (commit `ebadf10`) and exercises four engine builds through the same provider code path, switching purely by `--model` flag.
 
 ---
 
@@ -17,6 +17,7 @@ This run tests the new `llamaserver.WithLibraryPath` option (commit `ebadf10`) a
 | **assix-mpu** ⭐ | `engines/llamacli/mpu/llama-server` (16 MB, static, aca9a0f) | 17m54s | 427 chars ✅ | `drop unsupported device` — CPU fallback |
 | **surgical** | `llama.cpp/build/bin/llama-server` (9.8 MB, dynamic, ggml-org 832d383) | crash @ 57s | none | `enabling no-subgroups compatibility mode for FD702` → `GGML_ASSERT(0) failed at ggml-opencl.cpp:6710` mid-decode |
 | **assix-adreno** | `engines/llamacli/llama.cpp/build-adreno/bin/llama-server` (9.8 MB, dynamic, aca9a0f fresh) | hung (killed) | none | Adreno-specific kernels loaded, then `kernel compile error: use of undeclared identifier 'sub_group_reduce_add'` — server aborted, qclaw blocked on dead-server chat request |
+| **yzma** | `yzma/lib/llama-server` (9.0 MB, dynamic, hybridgroup b9127) | 16m46s | HTTP 500 ❌ | No OpenCL backend — RPC + CPU only; server returned `"Context size has been exceeded"` after 16m of decode |
 
 ⭐ = currently active in QClaw-v2 config
 
@@ -55,6 +56,14 @@ Error executing LLVM compilation action.
 
 The server died after the kernel compile error. qclaw's healthcheck briefly saw a response (the HTTP listener may have come up before the kernel-load failure), then hung 7 min waiting for a chat response from the dead server until manually killed.
 
+### yzma — older hybridgroup b9127 build, no OpenCL backend
+
+Loaded cleanly (RPC + CPU armv8 backends, no OpenCL attempted), passed the health check, and processed for 16m46s before returning HTTP 500 `"Context size has been exceeded"`. The model decoded ~3300 tokens at ~3.3 t/s — consistent with its Run 5 average — but never emitted EOS, eventually exhausting the 8192-token context window allocated for the request.
+
+The Run 5 9-prompt battery captured yzma at 3.39 t/s avg using shorter outputs (n_predict=128); here with the default 2048 max_tokens and the model failing to emit a stop token, it ran into the context wall. **The b9127 chat template handling differs from the modern assix server's** — possibly mismatched EOS token configuration or missing reasoning-suppression flag (yzma doesn't support `--reasoning off`).
+
+For a fair comparison yzma would need either a tighter max_tokens cap (e.g. n_predict=256) or a corrected chat template. Treat the 16m46s number here as "ran but failed to produce output" rather than as a tok/s measurement.
+
 ---
 
 ## Validation of Phase A Code
@@ -73,9 +82,10 @@ The server died after the kernel compile error. qclaw's healthcheck briefly saw 
 
 | Question | Answer |
 |---|---|
-| Can `llamaserver.Provider` host multiple engine builds via `--model`? | **Yes**, plumbing works end-to-end |
+| Can `llamaserver.Provider` host multiple engine builds via `--model`? | **Yes**, plumbing works end-to-end across four engines |
 | Does the Surgical build engage FD702? | Yes, then crashes at decode |
 | Does the Adreno-tuned assix build engage FD702? | Yes, then crashes at kernel compile (subgroup builtins in kernel source) |
+| Does yzma work via the new provider? | Server starts and processes correctly, but the b9127 chat template + missing reasoning-off support cause the model to not emit EOS → context overflow at 16m46s |
 | Is there a viable GPU path on this hardware today? | **No** — every OpenCL backend on this device structurally requires subgroup builtins that rusticl can't provide. The Vulkan path was already shown to engage but at 0.25 t/s (unusable) |
 | Should assix-mpu remain default? | **Yes**, no contender beats it |
 

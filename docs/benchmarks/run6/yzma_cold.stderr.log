@@ -1,0 +1,10 @@
+load_backend: loaded RPC backend from /home/arduino/ArduinoApps/yzma/lib/libggml-rpc.so
+[KError: error processing message: LLM call failed after retries: llama-server returned 500: {"error":{"code":500,"message":"Context size has been exceeded.","type":"server_error"}}
+Usage:
+  qclaw direct [flags]
+Flags:
+  -d, --debug            Enable debug logging
+  -h, --help             help for direct
+  -m, --message string   Send a single message
+      --model string     Model to use
+  -s, --session string   Session key (default "cli:direct")
