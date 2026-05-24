@@ -15,11 +15,13 @@
 package llamacli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -168,6 +170,183 @@ func (p *Provider) Chat(
 		return nil, fmt.Errorf("parsing llama-cli output: %w (stdout tail: %s)", perr, truncate(stdoutTail(stdout.String(), 600), 600))
 	}
 
+	return parseEnvelope(payload)
+}
+
+// ChatStream invokes the binary and reports text tokens to onToken as the
+// model emits them. It is intended for the direct (no-tools) path: the
+// grammar is fixed to the text envelope so the response is parsed
+// incrementally without waiting for process exit.
+//
+// Returns the fully assembled LLMResponse after the subprocess exits.
+func (p *Provider) ChatStream(
+	ctx context.Context,
+	messages []Message,
+	model string,
+	options map[string]any,
+	onToken func(string),
+) (*LLMResponse, error) {
+	if p.binary == "" {
+		return nil, errors.New("llama-cli binary path not configured")
+	}
+	if onToken == nil {
+		onToken = func(string) {}
+	}
+	modelPath, err := p.resolveModel(model)
+	if err != nil {
+		return nil, err
+	}
+
+	prompt := renderPrompt(messages)
+	grammar := buildGrammar(nil) // text envelope only
+
+	args := []string{
+		"-m", modelPath,
+		"-st",
+		"--reasoning", "off",
+		"--grammar", grammar,
+		"-c", fmt.Sprintf("%d", p.ctxSize),
+		"-t", fmt.Sprintf("%d", p.threads),
+		"-p", prompt,
+	}
+	if n, ok := common.AsInt(options["max_tokens"]); ok && n > 0 {
+		args = append(args, "-n", fmt.Sprintf("%d", n))
+	}
+	if t, ok := common.AsFloat(options["temperature"]); ok {
+		args = append(args, "--temp", fmt.Sprintf("%g", t))
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(cctx, p.binary, args...)
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("llama-cli stdout pipe: %w", err)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("llama-cli start failed: %w", err)
+	}
+
+	// Stream-parse the envelope incrementally. The expected output shape is
+	//   { "text": "...characters..." }
+	// embedded somewhere in stdout (llama-cli also emits banners and timing
+	// info). We scan for the `"text":` key, skip whitespace and the opening
+	// quote, then forward each decoded character until the closing quote.
+	var (
+		fullStdout strings.Builder
+		streamed   strings.Builder
+		reader     = bufio.NewReaderSize(stdoutPipe, 256)
+	)
+
+	state := 0 // 0=searching for "text", 1=after colon awaiting open quote, 2=streaming, 3=done
+	keyTarget := []byte(`"text"`)
+	keyMatch := 0
+
+	for {
+		b, rerr := reader.ReadByte()
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			break
+		}
+		fullStdout.WriteByte(b)
+
+		switch state {
+		case 0:
+			if b == keyTarget[keyMatch] {
+				keyMatch++
+				if keyMatch == len(keyTarget) {
+					state = 1
+				}
+			} else if b == keyTarget[0] {
+				keyMatch = 1
+			} else {
+				keyMatch = 0
+			}
+		case 1:
+			if b == ' ' || b == '\t' || b == '\n' || b == ':' || b == '\r' {
+				continue
+			}
+			if b == '"' {
+				state = 2
+				continue
+			}
+			// Unexpected; fall back to non-streaming parse at exit.
+			state = 3
+		case 2:
+			if b == '\\' {
+				// Read escape sequence
+				esc, eerr := reader.ReadByte()
+				if eerr != nil {
+					state = 3
+					break
+				}
+				fullStdout.WriteByte(esc)
+				var decoded string
+				switch esc {
+				case 'n':
+					decoded = "\n"
+				case 't':
+					decoded = "\t"
+				case 'r':
+					decoded = "\r"
+				case '"':
+					decoded = `"`
+				case '\\':
+					decoded = `\`
+				case '/':
+					decoded = `/`
+				case 'b':
+					decoded = "\b"
+				case 'f':
+					decoded = "\f"
+				case 'u':
+					// Pass through verbatim; final parse will decode it.
+					hex := make([]byte, 4)
+					n, herr := io.ReadFull(reader, hex)
+					if n > 0 {
+						fullStdout.Write(hex[:n])
+					}
+					if herr == nil {
+						decoded = string([]byte{'\\', 'u', hex[0], hex[1], hex[2], hex[3]})
+					}
+				default:
+					decoded = string([]byte{'\\', esc})
+				}
+				if decoded != "" {
+					streamed.WriteString(decoded)
+					onToken(decoded)
+				}
+			} else if b == '"' {
+				state = 3
+			} else {
+				streamed.WriteByte(b)
+				onToken(string(b))
+			}
+		case 3:
+			// Continue draining stdout for the final parse fallback.
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return nil, fmt.Errorf("llama-cli exec failed: %w (stderr: %s)", err, truncate(stderr.String(), 1000))
+	}
+
+	// Prefer the live-streamed content; if streaming didn't engage (state
+	// never reached 3 via the success path), fall back to the full-envelope
+	// parser so we still return something useful.
+	if state == 3 && streamed.Len() > 0 {
+		return &LLMResponse{Content: streamed.String(), FinishReason: "stop"}, nil
+	}
+	payload, perr := extractJSON(fullStdout.String())
+	if perr != nil {
+		return nil, fmt.Errorf("parsing llama-cli output: %w (stdout tail: %s)", perr, truncate(stdoutTail(fullStdout.String(), 600), 600))
+	}
 	return parseEnvelope(payload)
 }
 

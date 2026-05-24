@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/ergochat/readline"
 	"github.com/spf13/cobra"
@@ -18,6 +19,40 @@ import (
 	"github.com/laurenvil/Uno-QClaw/pkg/logger"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers"
 )
+
+// runDirectTurn runs a single direct turn with a thinking spinner that
+// clears on the first streamed token, followed by live token output and a
+// trailing elapsed-time summary. Returns the assembled response.
+func runDirectTurn(ctx context.Context, agentLoop *agent.AgentLoop, input, sessionKey string) (string, error) {
+	spin := startSpinner("QClaw is thinking…")
+	var firstToken atomic.Bool
+
+	fmt.Print("\nQClaw (direct): ")
+	onToken := func(tok string) {
+		if firstToken.CompareAndSwap(false, true) {
+			spin.Stop()
+			// re-print the label since the spinner cleared the line on stop
+			fmt.Print("\nQClaw (direct): ")
+		}
+		fmt.Print(tok)
+	}
+
+	response, err := agentLoop.ProcessDirectSingleTurnStream(ctx, input, sessionKey, onToken)
+	elapsed := spin.Elapsed()
+	spin.Stop()
+
+	if err != nil {
+		return "", err
+	}
+
+	// If streaming never engaged (e.g. provider didn't implement Streamable),
+	// emit the full response now so the user sees something.
+	if !firstToken.Load() {
+		fmt.Print(response)
+	}
+	fmt.Printf("\n  ⏱  %s\n\n", elapsed.Round(100*1000*1000)) // .1s precision
+	return response, nil
+}
 
 func NewDirectCommand() *cobra.Command {
 	var (
@@ -80,11 +115,9 @@ func directCmd(message, sessionKey, model string, debug bool) error {
 
 	if message != "" {
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirectSingleTurn(ctx, message, sessionKey)
-		if err != nil {
+		if _, err := runDirectTurn(ctx, agentLoop, message, sessionKey); err != nil {
 			return fmt.Errorf("error processing message: %w", err)
 		}
-		fmt.Printf("\nQClaw (direct): %s\n", response)
 		return nil
 	}
 
@@ -131,13 +164,10 @@ func directInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		}
 
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirectSingleTurn(ctx, input, sessionKey)
-		if err != nil {
+		if _, err := runDirectTurn(ctx, agentLoop, input, sessionKey); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-
-		fmt.Printf("\nQClaw (direct): %s\n\n", response)
 	}
 }
 
@@ -160,12 +190,9 @@ func simpleDirectInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) 
 		}
 
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirectSingleTurn(ctx, input, sessionKey)
-		if err != nil {
+		if _, err := runDirectTurn(ctx, agentLoop, input, sessionKey); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-
-		fmt.Printf("\nQClaw (direct): %s\n\n", response)
 	}
 }

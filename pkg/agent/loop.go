@@ -53,18 +53,29 @@ type AgentLoop struct {
 	activeRequests sync.WaitGroup
 }
 
+// ProgressEvent describes a step the agent loop is taking. Callers may use
+// it to render interstitial UX (CLI spinner, Telegram edit, etc.).
+type ProgressEvent struct {
+	Kind    string // "tool_start" | "tool_done" | "tool_error" | "iteration"
+	Tool    string // tool name (when relevant)
+	Message string // human-readable summary
+	Elapsed time.Duration
+}
+
 // processOptions configures how a message is processed
 type processOptions struct {
-	SessionKey      string   // Session identifier for history/context
-	Channel         string   // Target channel for tool execution
-	ChatID          string   // Target chat ID for tool execution
-	UserMessage     string   // User message content (may include prefix)
-	Media           []string // media:// refs from inbound message
-	DefaultResponse string   // Response when LLM returns empty
-	EnableSummary   bool     // Whether to trigger summarization
-	SendResponse    bool     // Whether to send response via bus
-	NoHistory       bool     // If true, don't load session history (for heartbeat)
-	Direct          bool     // If true, run in single-turn mode without tools
+	SessionKey       string                  // Session identifier for history/context
+	Channel          string                  // Target channel for tool execution
+	ChatID           string                  // Target chat ID for tool execution
+	UserMessage      string                  // User message content (may include prefix)
+	Media            []string                // media:// refs from inbound message
+	DefaultResponse  string                  // Response when LLM returns empty
+	EnableSummary    bool                    // Whether to trigger summarization
+	SendResponse     bool                    // Whether to send response via bus
+	NoHistory        bool                    // If true, don't load session history (for heartbeat)
+	Direct           bool                    // If true, run in single-turn mode without tools
+	ProgressCallback func(ev ProgressEvent)  // Optional: invoked on iteration/tool boundaries
+	StreamCallback   func(token string)      // Optional: streams tokens from the LLM (direct mode only)
 }
 
 const (
@@ -653,6 +664,18 @@ func (al *AgentLoop) ProcessDirectSingleTurn(
 	ctx context.Context,
 	content, sessionKey string,
 ) (string, error) {
+	return al.ProcessDirectSingleTurnStream(ctx, content, sessionKey, nil)
+}
+
+// ProcessDirectSingleTurnStream is the streaming variant of
+// ProcessDirectSingleTurn. When onToken is non-nil and the active provider
+// implements providers.Streamable, tokens are streamed to the callback as
+// they are generated; the fully assembled response is also returned.
+func (al *AgentLoop) ProcessDirectSingleTurnStream(
+	ctx context.Context,
+	content, sessionKey string,
+	onToken func(string),
+) (string, error) {
 	if err := al.ensureMCPInitialized(ctx); err != nil {
 		return "", err
 	}
@@ -680,7 +703,47 @@ func (al *AgentLoop) ProcessDirectSingleTurn(
 		DefaultResponse: defaultResponse,
 		EnableSummary:   false,
 		SendResponse:    false,
-		Direct:          true, // Enable direct mode
+		Direct:          true,
+		StreamCallback:  onToken,
+	})
+}
+
+// ProcessDirectWithProgress is ProcessDirect with a tool-progress callback.
+// onProgress (if non-nil) is invoked on tool-call boundaries inside the
+// agent loop so callers can render interstitial UX while the loop runs.
+func (al *AgentLoop) ProcessDirectWithProgress(
+	ctx context.Context,
+	content, sessionKey string,
+	onProgress func(ProgressEvent),
+) (string, error) {
+	if err := al.ensureMCPInitialized(ctx); err != nil {
+		return "", err
+	}
+
+	msg := bus.InboundMessage{
+		Channel:    "cli",
+		SenderID:   "cli",
+		ChatID:     "default",
+		Content:    content,
+		SessionKey: sessionKey,
+	}
+
+	route, agent, routeErr := al.resolveMessageRoute(msg)
+	if routeErr != nil {
+		return "", routeErr
+	}
+
+	scopeKey := resolveScopeKey(route, msg.SessionKey)
+
+	return al.runAgentLoop(ctx, agent, processOptions{
+		SessionKey:       scopeKey,
+		Channel:          msg.Channel,
+		ChatID:           msg.ChatID,
+		UserMessage:      msg.Content,
+		DefaultResponse:  defaultResponse,
+		EnableSummary:    false,
+		SendResponse:     false,
+		ProgressCallback: onProgress,
 	})
 }
 
@@ -1127,9 +1190,20 @@ func (al *AgentLoop) runLLMIteration(
 			}
 		}
 
+		// Streaming is only meaningful in direct (no-tools) mode, when the
+		// caller provided a StreamCallback, and when the provider implements
+		// the Streamable interface. In every other case we fall back to the
+		// standard buffered Chat() path.
+		streamable, canStream := agent.Provider.(providers.Streamable)
+		useStream := opts.Direct && opts.StreamCallback != nil && canStream && len(activeCandidates) <= 1
+
 		callLLM := func() (*providers.LLMResponse, error) {
 			al.activeRequests.Add(1)
 			defer al.activeRequests.Done()
+
+			if useStream {
+				return streamable.ChatStream(ctx, messages, activeModel, llmOpts, opts.StreamCallback)
+			}
 
 			if len(activeCandidates) > 1 && al.fallback != nil {
 				fbResult, fbErr := al.fallback.Execute(
@@ -1343,6 +1417,15 @@ func (al *AgentLoop) runLLMIteration(
 						"iteration": iteration,
 					})
 
+				toolStart := time.Now()
+				if opts.ProgressCallback != nil {
+					opts.ProgressCallback(ProgressEvent{
+						Kind:    "tool_start",
+						Tool:    tc.Name,
+						Message: fmt.Sprintf("Calling %s(%s)", tc.Name, argsPreview),
+					})
+				}
+
 				// Create async callback for tools that implement AsyncExecutor.
 				// When the background work completes, this publishes the result
 				// as an inbound system message so processSystemMessage routes it
@@ -1395,6 +1478,21 @@ func (al *AgentLoop) runLLMIteration(
 					asyncCallback,
 				)
 				agentResults[idx].result = toolResult
+
+				if opts.ProgressCallback != nil {
+					kind := "tool_done"
+					msg := fmt.Sprintf("%s completed", tc.Name)
+					if toolResult != nil && toolResult.Err != nil {
+						kind = "tool_error"
+						msg = fmt.Sprintf("%s failed: %s", tc.Name, toolResult.Err.Error())
+					}
+					opts.ProgressCallback(ProgressEvent{
+						Kind:    kind,
+						Tool:    tc.Name,
+						Message: msg,
+						Elapsed: time.Since(toolStart),
+					})
+				}
 			}(i, tc)
 		}
 		wg.Wait()

@@ -18,6 +18,36 @@ import (
 	"github.com/laurenvil/Uno-QClaw/pkg/providers"
 )
 
+// runAgenticTurn runs one turn of the agentic CLI with a thinking spinner
+// that shows live tool-call progress and elapsed time.
+func runAgenticTurn(ctx context.Context, agentLoop *agent.AgentLoop, input, sessionKey string) (string, error) {
+	spin := startSpinner("QClaw is thinking…")
+
+	progress := func(ev agent.ProgressEvent) {
+		spin.Clear()
+		switch ev.Kind {
+		case "tool_start":
+			fmt.Fprintf(os.Stderr, "  🔧 %s\n", ev.Message)
+			spin.SetLabel(fmt.Sprintf("Running %s…", ev.Tool))
+		case "tool_done":
+			fmt.Fprintf(os.Stderr, "  ✓  %s (%s)\n", ev.Message, ev.Elapsed.Round(100*1000*1000))
+			spin.SetLabel("QClaw is thinking…")
+		case "tool_error":
+			fmt.Fprintf(os.Stderr, "  ✗  %s (%s)\n", ev.Message, ev.Elapsed.Round(100*1000*1000))
+			spin.SetLabel("QClaw is thinking…")
+		}
+	}
+
+	response, err := agentLoop.ProcessDirectWithProgress(ctx, input, sessionKey, progress)
+	elapsed := spin.Elapsed()
+	spin.Stop()
+	if err != nil {
+		return "", err
+	}
+	fmt.Printf("\nQClaw: %s\n  ⏱  %s\n\n", response, elapsed.Round(100*1000*1000))
+	return response, nil
+}
+
 func agentCmd(message, sessionKey, model string, debug bool) error {
 	if sessionKey == "" {
 		sessionKey = "cli:default"
@@ -63,11 +93,9 @@ func agentCmd(message, sessionKey, model string, debug bool) error {
 
 	if message != "" {
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirect(ctx, message, sessionKey)
-		if err != nil {
+		if _, err := runAgenticTurn(ctx, agentLoop, message, sessionKey); err != nil {
 			return fmt.Errorf("error processing message: %w", err)
 		}
-		fmt.Printf("\nQClaw: %s\n", response)
 		return nil
 	}
 
@@ -117,13 +145,10 @@ func interactiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		}
 
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
-		if err != nil {
+		if _, err := runAgenticTurn(ctx, agentLoop, input, sessionKey); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-
-		fmt.Printf("\nQClaw: %s\n\n", response)
 	}
 }
 
@@ -152,12 +177,9 @@ func simpleInteractiveMode(agentLoop *agent.AgentLoop, sessionKey string) {
 		}
 
 		ctx := context.Background()
-		response, err := agentLoop.ProcessDirect(ctx, input, sessionKey)
-		if err != nil {
+		if _, err := runAgenticTurn(ctx, agentLoop, input, sessionKey); err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-
-		fmt.Printf("\nQClaw: %s\n\n", response)
 	}
 }
