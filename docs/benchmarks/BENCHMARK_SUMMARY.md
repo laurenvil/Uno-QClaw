@@ -140,8 +140,14 @@ The Vulkan path (`llama-opencl/build-vulkan/bin/llama-server`, 75 MB, ggml-org d
 |---|---|---|---|
 | Main / Yazma b9127 | 3.86 | 5.37 | ✗ CPU only |
 | **V3 assix mpu aca9a0f** ⭐ | **3.87** | **10.6** (llama-cli) | ✗ OpenCL drops |
-| Modernized Surgical | 3.68 | 5.89 | ✗ OpenCL drops |
+| Modernized Surgical | 3.68 | 5.89 | ✗ OpenCL crashes at decode (`GGML_ASSERT(0)` in compat path) |
+| Adreno-tuned assix (fresh build, Run 6) | n/a | n/a | ✗ OpenCL kernel compile fails (`sub_group_reduce_add` not declared on rusticl) |
 | Vulkan llama-opencl d4b0c22 | 0.25 | 0.46 | ✓ active but unusable |
-| llama-wang opencl/nvidia | — | — | ? highest-priority next test |
+| llama-wang opencl/nvidia | — | — | ? remains untested |
 
-**Next step:** benchmark `llama-wang/build/bin/llama-bench` — the only Adreno-targeted OpenCL fork (`wanghqc/llama.cpp · opencl/nvidia`, commit 8c5aa97, April 2026 Q4_K GEMV fix) that has not been tested on this hardware.
+**Run 6 finding (2026-05-24):** The structural blocker on this hardware is rusticl's missing `cl_khr_subgroups`. Both modernized engines (Surgical and Adreno-tuned assix) get past the device-name allowlist and the subgroup-extension check, but the kernel source code itself uses `get_sub_group_id` and `sub_group_reduce_add` as direct OpenCL C builtins that rusticl cannot resolve. See [run6/three-engine-comparison.md](run6/three-engine-comparison.md) for full details.
+
+**Next steps (in priority order):**
+1. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
+2. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
+3. Track Mesa rusticl `cl_khr_subgroups` implementation

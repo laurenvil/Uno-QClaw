@@ -1,0 +1,35 @@
+ggml_opencl: device: 'FD702 (OpenCL 3.0 )'
+ggml_opencl: OpenCL driver: 25.2.6-1~bpo13+1
+ggml_opencl: vector subgroup broadcast support: false
+ggml_opencl: device FP16 support: true
+ggml_opencl: subgroup extensions not reported for 'FD702'; continuing experimentally
+ggml_opencl: mem base addr align: 512
+ggml_opencl: max mem alloc size: 2047 MB
+ggml_opencl: device local mem size: 16 KB
+ggml_opencl: device max image buffer size (pixels): 134217727
+ggml_opencl: device max workgroup size: 512
+ggml_opencl: SVM coarse grain buffer support: false
+ggml_opencl: SVM fine grain buffer support: false
+ggml_opencl: SVM fine grain system support: false
+ggml_opencl: SVM atomics support: false
+ggml_opencl: flattening quantized weights representation as struct of arrays (GGML_OPENCL_SOA_Q)
+ggml_opencl: using kernels optimized for Adreno (GGML_OPENCL_USE_ADRENO_KERNELS)
+ggml_opencl: loading OpenCL kernels.
+input.cl:6:26: warning: unsupported OpenCL extension 'cl_khr_subgroups' - ignoring [-Wignored-pragmas]
+input.cl:108:27: error: use of undeclared identifier 'N_SIMDGROUP'
+input.cl:108:41: error: use of undeclared identifier 'get_sub_group_id'
+input.cl:108:63: error: use of undeclared identifier 'N_DST'
+input.cl:119:16: error: use of undeclared identifier 'N_DST'
+input.cl:121:14: error: use of undeclared identifier 'get_sub_group_local_id'
+input.cl:122:17: error: use of undeclared identifier 'get_sub_group_local_id'
+input.cl:127:38: error: use of undeclared identifier 'N_SIMDWIDTH'
+input.cl:138:33: error: use of undeclared identifier 'N_DST'
+input.cl:148:24: error: use of undeclared identifier 'N_SIMDWIDTH'
+input.cl:155:15: error: use of undeclared identifier 'N_DST'
+input.cl:156:9: error: use of undeclared identifier 'sub_group_reduce_add'
+input.cl:156:40: error: use of undeclared identifier 'sub_group_reduce_add'
+input.cl:157:9: error: use of undeclared identifier 'sub_group_reduce_add'
+input.cl:157:40: error: use of undeclared identifier 'sub_group_reduce_add'
+input.cl:158:29: error: use of undeclared identifier 'N_DST'
+input.cl:159:13: error: use of undeclared identifier 'get_sub_group_local_id'
+Error executing LLVM compilation action.

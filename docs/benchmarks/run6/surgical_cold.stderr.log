@@ -1,0 +1,35 @@
+ggml_opencl: device: 'FD702 (OpenCL 3.0 )'
+ggml_opencl: Adreno-specific kernels are compiled in but disabled for non-Adreno device 'FD702'
+ggml_opencl: OpenCL driver: 25.2.6-1~bpo13+1
+ggml_opencl: vector subgroup broadcast support: false
+ggml_opencl: device FP16 support: true
+ggml_opencl: enabling no-subgroups compatibility mode for 'FD702'
+ggml_opencl: subgroup extensions not reported for 'FD702'; continuing experimentally
+ggml_opencl: mem base addr align: 512
+ggml_opencl: max mem alloc size: 2047 MB
+ggml_opencl: device local mem size: 16 KB
+ggml_opencl: device max image buffer size (pixels): 134217727
+ggml_opencl: device max workgroup size: 512
+ggml_opencl: SVM coarse grain buffer support: false
+ggml_opencl: SVM fine grain buffer support: false
+ggml_opencl: SVM fine grain system support: false
+ggml_opencl: SVM atomics support: false
+ggml_opencl: flattening quantized weights representation as struct of arrays (GGML_OPENCL_SOA_Q)
+ggml_opencl: building kernels with no-subgroups compatibility mode for 'FD702'
+ggml_opencl: loading OpenCL kernels
+ggml_opencl: conv2d_f16_f32 kernel source not found or empty. This op will not be available.
+ggml_opencl: default device: 'FD702 (OpenCL 3.0 )'
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libggml-base.so.0(ggml_print_backtrace+0x1ec) [0xffff800f3a70]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libggml-base.so.0(ggml_abort+0xf0) [0xffff800f3bf0]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libggml-opencl.so.0(+0x6206c) [0xffff7f96206c]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libggml-base.so.0(ggml_backend_sched_graph_compute_async+0x1d8) [0xffff8010d700]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libllama.so.0(_ZN13llama_context13graph_computeEP11ggml_cgraphb+0xa0) [0xffff8024bb00]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libllama.so.0(_ZN13llama_context14process_ubatchERK12llama_ubatch14llm_graph_typeP22llama_memory_context_iR11ggml_status+0xd8) [0xffff8024e200]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libllama.so.0(_ZN13llama_context6decodeERK11llama_batch+0x300) [0xffff80253940]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/libllama.so.0(llama_decode+0x10) [0xffff80255010]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/llama-server(+0x1b8410) [0xaaaab9778410]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/llama-server(+0xdab4c) [0xaaaab969ab4c]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/llama-server(+0x36740) [0xaaaab95f6740]
+/lib/aarch64-linux-gnu/libc.so.6(+0x2221c) [0xffff7fbe221c]
+/lib/aarch64-linux-gnu/libc.so.6(__libc_start_main+0x9c) [0xffff7fbe22fc]
+/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin/llama-server(+0x3f330) [0xaaaab95ff330]
