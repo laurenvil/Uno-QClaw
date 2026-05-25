@@ -76,7 +76,7 @@ make qclaw-tui        # full-screen TUI: channel config + in-app chat (server pr
 qclaw direct --model yzma -m "Which pins do PWM?"
 ```
 
-`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`.
+`make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`. The Terminal User Interface (TUI) `make qclaw-tui' provides a UI for both Agentice and Direct chats that users can toggle between. Users can also configure QClaw throught the TUI.
 
 <img width="4000" height="3000" alt="QClaw-TUI" src="https://github.com/user-attachments/assets/8f73e0da-bb7f-46d7-9415-9d667144ade2" />
 
