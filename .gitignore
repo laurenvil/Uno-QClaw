@@ -68,3 +68,7 @@ web/backend/dist/*
 
 # Local-only verification reports (not pushed to remote)
 docs/QClaw/fork-verification-*.md
+
+# Yzma engine libs (large binaries, populated by scripts/install-yzma-libs.sh)
+engines/yzma/lib/
+engines/yzma/lib/_backup_*/
