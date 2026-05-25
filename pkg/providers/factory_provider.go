@@ -217,6 +217,9 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 		if v, ok := cfg.ExtraBody["ctx_size"].(float64); ok {
 			opts = append(opts, llamacli.WithContextSize(int(v)))
 		}
+		if v, ok := cfg.ExtraBody["lib_path"].(string); ok && v != "" {
+			opts = append(opts, llamacli.WithLibraryPath(v))
+		}
 		if cfg.RequestTimeout > 0 {
 			opts = append(opts, llamacli.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
 		}

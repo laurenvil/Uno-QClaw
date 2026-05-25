@@ -48,6 +48,7 @@ type Provider struct {
 	defaultModel string
 	threads      int
 	ctxSize      int
+	libraryPath  string
 	timeout      time.Duration
 }
 
@@ -89,6 +90,18 @@ func WithDefaultModel(name string) Option {
 	return func(p *Provider) {
 		if name != "" {
 			p.defaultModel = name
+		}
+	}
+}
+
+// WithLibraryPath prepends a directory to LD_LIBRARY_PATH when spawning the
+// llama-cli subprocess. Required for dynamically-linked builds (e.g. yzma's
+// llama-cli) whose ggml/llama .so files live next to the binary instead of a
+// system path.
+func WithLibraryPath(path string) Option {
+	return func(p *Provider) {
+		if path != "" {
+			p.libraryPath = path
 		}
 	}
 }
@@ -158,6 +171,11 @@ func (p *Provider) Chat(
 	defer cancel()
 
 	cmd := exec.CommandContext(cctx, p.binary, args...)
+	// The assix llama-cli binary statically links the OpenCL backend with
+	// Adreno-specific kernels that fail to compile on Mesa rusticl
+	// (cl_khr_subgroups unsupported). Pin the platform to a non-existent
+	// name so the OpenCL backend gives up cleanly and falls back to CPU.
+	cmd.Env = buildEnv(p.libraryPath)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -226,6 +244,11 @@ func (p *Provider) ChatStream(
 	defer cancel()
 
 	cmd := exec.CommandContext(cctx, p.binary, args...)
+	// The assix llama-cli binary statically links the OpenCL backend with
+	// Adreno-specific kernels that fail to compile on Mesa rusticl
+	// (cl_khr_subgroups unsupported). Pin the platform to a non-existent
+	// name so the OpenCL backend gives up cleanly and falls back to CPU.
+	cmd.Env = buildEnv(p.libraryPath)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("llama-cli stdout pipe: %w", err)
@@ -560,4 +583,23 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// buildEnv constructs the spawn environment for a llama-cli subprocess.
+// GGML_OPENCL_PLATFORM=none disables the statically-linked OpenCL backend
+// in the assix build, whose Adreno-specific kernels fail to compile on Mesa
+// rusticl (cl_khr_subgroups unsupported). libraryPath, when set, is prepended
+// to LD_LIBRARY_PATH for dynamic builds (e.g. yzma's llama-cli) whose .so
+// dependencies live next to the binary.
+func buildEnv(libraryPath string) []string {
+	env := append(os.Environ(), "GGML_OPENCL_PLATFORM=none")
+	if libraryPath != "" {
+		existing := os.Getenv("LD_LIBRARY_PATH")
+		ldPath := libraryPath
+		if existing != "" {
+			ldPath = libraryPath + ":" + existing
+		}
+		env = append(env, "LD_LIBRARY_PATH="+ldPath)
+	}
+	return env
 }

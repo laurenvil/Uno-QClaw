@@ -72,6 +72,20 @@
       }
     },
     {
+      "model_name": "llamacli-mpu",
+      "model": "llama-cli/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "_comment": "Originally engines/llamacli/mpu/llama-cli (assix static); that binary's statically-linked OpenCL backend fails on Mesa rusticl. Repointed at yzma's CPU+RPC llama-cli, which is the only working llama-cli on this hardware.",
+      "api_base": "yzma/lib/llama-cli",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 8192,
+        "lib_path": "yzma/lib"
+      }
+    },
+    {
       "model_name": "yzma",
       "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
       "api_base": "yzma/lib/llama-server",

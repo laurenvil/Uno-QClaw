@@ -2,7 +2,7 @@
 
 **Hardware:** Arduino Uno Q · Qualcomm QRB2210 · 4× Cortex-A53 · 4 GB LPDDR4X · kernel 6.16.7
 **Model:** `Qwen_Qwen3.5-0.8B-Q4_0.gguf` (490 MB, Q4_0)
-**Runs:** 1–8 · **All CPU-only** (GPU dropped at init, see §GPU Status)
+**Runs:** 1–9 · **All CPU-only** (GPU dropped at init, see §GPU Status)
 
 ---
 
@@ -183,9 +183,32 @@ to have those gains baked in already, so the flags only add cost.
 
 Full report: [run8/four-engine-optimized-comparison.md](run8/four-engine-optimized-comparison.md).
 
+### Run 9 — Three-engine, three-sample comparison + llama-cli probe (2026-05-25)
+
+Re-ran pwm_pins 3× each on assix-mpu and yzma (both optimized) to validate Run 8's inversion.
+Also added a `llamacli-mpu` model entry to probe llama-cli as a direct-path alternative.
+
+| Engine | Mean wall (3 runs) | σ | Verdict |
+|---|---|---|---|
+| **assix-mpu optimized** ⭐ | **12m26s** (746s) | 2s | Tight, reproducible, fastest |
+| yzma optimized | 12m35s (755s) | 4s | Tight, 8s slower than assix-mpu |
+| llamacli-mpu (yzma binary) | 1200s killed | — | **Repetition loop** — model loops forever, qclaw timeout fires |
+
+Run 8's 23s assix→yzma gap shrinks to 8s with three samples (was half signal, half noise). The
+directional finding holds: assix-mpu optimized is the fastest viable engine on this hardware.
+
+**Llama-cli direct-path probe:** The assix `engines/llamacli/mpu/llama-cli` binary is now broken
+on this hardware (same OpenCL kernel compile failure as assix-adreno). Repointed at yzma's CPU+RPC
+llama-cli — that binary runs, but the llamacli provider has no repetition controls, and the 0.8B
+Qwen model deterministically falls into the loop documented in main's whitepaper §9.2. Verdict:
+**llama-cli is not viable for the direct path until the llamacli provider adds `--repeat-penalty`
+and a no-progress wall-clock guard.** Until then, yzma llama-server is the direct-path default.
+
+Full report: [run9/three-engine-3x-comparison.md](run9/three-engine-3x-comparison.md).
+
 **Next steps (in priority order):**
-1. Re-run pwm_pins on assix-mpu + yzma 2–3× to confirm the inversion isn't single-sample noise
-2. Warm-direct benchmark on yzma — measure prefix-cache hit rate to settle direct-path engine choice
+1. Fix llamacli provider: pass `--repeat-penalty 1.1 --repeat-last-n 64` defaults, expose presence/frequency penalty knobs, add no-progress wall-clock guard. Then re-run Run 9 llama-cli passes.
+2. Warm-direct benchmark on yzma — measure KV prefix-cache hit rate to settle whether persistent server actually helps repeated direct queries
 3. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
 4. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
 5. Track Mesa rusticl `cl_khr_subgroups` implementation
