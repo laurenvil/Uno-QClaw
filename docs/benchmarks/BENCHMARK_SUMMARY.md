@@ -2,7 +2,7 @@
 
 **Hardware:** Arduino Uno Q · Qualcomm QRB2210 · 4× Cortex-A53 · 4 GB LPDDR4X · kernel 6.16.7
 **Model:** `Qwen_Qwen3.5-0.8B-Q4_0.gguf` (490 MB, Q4_0)
-**Runs:** 1–5 + today's partial session · **All CPU-only** (GPU dropped at init, see §GPU Status)
+**Runs:** 1–7 · **All CPU-only** (GPU dropped at init, see §GPU Status)
 
 ---
 
@@ -147,7 +147,24 @@ The Vulkan path (`llama-opencl/build-vulkan/bin/llama-server`, 75 MB, ggml-org d
 
 **Run 6 finding (2026-05-24):** The structural blocker on this hardware is rusticl's missing `cl_khr_subgroups`. Both modernized engines (Surgical and Adreno-tuned assix) get past the device-name allowlist and the subgroup-extension check, but the kernel source code itself uses `get_sub_group_id` and `sub_group_reduce_add` as direct OpenCL C builtins that rusticl cannot resolve. See [run6/three-engine-comparison.md](run6/three-engine-comparison.md) for full details.
 
+### Run 7 — Yzma integration + study-bible optimization pass (2026-05-25)
+
+Yzma added as QClaw-v2's fourth engine via `.gitmodules` submodule + `model_list` config entry
+(port 8083, lib_path `/home/arduino/ArduinoApps/yzma/lib`). New provider features: `WithParallel`
+option (default 1, fixes auto-slot ctx overflow on b9127+) and `extra_args` passthrough from
+`extra_body` (generic mechanism for per-engine server flags, no Go changes needed for new flags).
+
+| Config | Wall (cold) | Response | Notes |
+|---|---|---|---|
+| Baseline (`-np 1` only) | **11m49.6s** | 241 chars ✅ | Fastest engine to date |
+| Optimized (flash-attn, mlock, q8_0 KV, reasoning-budget 800) | 12m43.2s | 146 chars ✅ | 53s regression on cold |
+
+**Key finding:** Yzma baseline cold (11m49.6s) beats assix-mpu cold (17m54s, Run 6) by **6m04s**
+on the same prompt and model, both CPU-only. The `--mlock` + `--flash-attn` flags add upfront cost
+on a cold run; warm-path benefit remains unmeasured.
+
 **Next steps (in priority order):**
-1. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
-2. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
-3. Track Mesa rusticl `cl_khr_subgroups` implementation
+1. Run optimized warm benchmark — mlock cost amortised after first load; flash-attn benefit appears on decode
+2. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
+3. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
+4. Track Mesa rusticl `cl_khr_subgroups` implementation

@@ -64,9 +64,17 @@
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 12288,
+        "ctx_size": 8192,
+        "parallel": 1,
         "port": 8083,
-        "lib_path": "/home/arduino/ArduinoApps/yzma/lib"
+        "lib_path": "/home/arduino/ArduinoApps/yzma/lib",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800"
+        ]
       }
     }
   ],
