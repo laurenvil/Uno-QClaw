@@ -329,7 +329,7 @@ func (p *Provider) ChatStream(
 func (p *Provider) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if p.cmd != nil && p.cmd.Process != nil {
 		logger.InfoCF("llamaserver", "Stopping persistent llama-server", nil)
 		p.cmd.Process.Kill()
@@ -337,6 +337,12 @@ func (p *Provider) Close() {
 		p.cmd = nil
 	}
 	p.initialized = false
+}
+
+// WarmUp starts the llama-server process without issuing an LLM call.
+// Safe to call concurrently; returns immediately if the server is already up.
+func (p *Provider) WarmUp(ctx context.Context, model string) error {
+	return p.ensureServer(ctx, model)
 }
 
 func (p *Provider) ensureServer(ctx context.Context, model string) error {

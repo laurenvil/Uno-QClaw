@@ -41,8 +41,12 @@ type chatPage struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	prov      providers.LLMProvider // raw provider, used for WarmUp type assertion
+	modelName string                // model file name passed to provider (e.g. "Qwen3.5-0.8B-Q6_K")
+	engineKey string                // engine display key (e.g. "yzma"), shown in mode bar
+
 	mode      chatMode
-	toggleCtr int        // bumped on each mode toggle to create a fresh session key
+	toggleCtr int // bumped on each mode toggle to create a fresh session key
 	busy      atomic.Bool
 }
 
@@ -66,12 +70,20 @@ func (s *appState) newChatPage() (*chatPage, error) {
 	loop := agent.NewAgentLoop(cfg, msgBus, prov)
 	ctx, cancel := context.WithCancel(context.Background())
 
+	engineKey := strings.TrimSpace(cfg.Agents.Defaults.Model)
+	if engineKey == "" {
+		engineKey = "?"
+	}
+
 	cp := &chatPage{
-		s:      s,
-		loop:   loop,
-		msgBus: msgBus,
-		ctx:    ctx,
-		cancel: cancel,
+		s:         s,
+		loop:      loop,
+		msgBus:    msgBus,
+		ctx:       ctx,
+		cancel:    cancel,
+		prov:      prov,
+		modelName: cfg.Agents.Defaults.ModelName,
+		engineKey: engineKey,
 	}
 	cp.build()
 	return cp, nil
@@ -145,18 +157,13 @@ func (cp *chatPage) build() {
 
 // updateModeBar rewrites the mode bar text. Must be called from the main goroutine.
 func (cp *chatPage) updateModeBar() {
-	engineName := strings.TrimSpace(cp.s.config.Agents.Defaults.Model)
-	if engineName == "" {
-		engineName = "?"
-	}
-
 	var sb strings.Builder
 	if cp.mode == chatModeDirect {
 		sb.WriteString(" [#50fa7b]● Direct[-]  [gray]○ Agentic[-]")
 	} else {
 		sb.WriteString(" [gray]○ Direct[-]  [#50fa7b]● Agentic[-]")
 	}
-	fmt.Fprintf(&sb, "  │  [#bd93f9]%s[-]  │  F2:mode  Ctrl+L:clear  Esc:back", engineName)
+	fmt.Fprintf(&sb, "  │  [#bd93f9]%s[-]  │  F2:mode  Ctrl+L:clear  Esc:back", cp.engineKey)
 	cp.modeBar.SetText(sb.String())
 }
 
@@ -314,14 +321,30 @@ func (cp *chatPage) runAgentic(text, sessionKey string) error {
 	return nil
 }
 
+// preWarm triggers llama-server start without an LLM call if the provider supports it.
+// Blocks until the server is ready (or fails). Safe to call from any goroutine.
+func (cp *chatPage) preWarm(ctx context.Context) {
+	type warmUpper interface {
+		WarmUp(ctx context.Context, model string) error
+	}
+	wu, ok := cp.prov.(warmUpper)
+	if !ok {
+		return
+	}
+	_ = wu.WarmUp(ctx, cp.modelName)
+}
+
 // close cancels any in-flight request, shuts down the agent loop, and returns to the main menu.
 // Must be called from the main goroutine.
 func (cp *chatPage) close() {
 	cp.cancel()
+	s := cp.s
 	go func() {
 		cp.loop.Close()
 		cp.msgBus.Close()
+		// Re-warm a fresh page after the old server has fully stopped.
+		go s.triggerPrewarm()
 	}()
-	cp.s.isChatOpen = false
-	cp.s.pop()
+	s.isChatOpen = false
+	s.pop()
 }

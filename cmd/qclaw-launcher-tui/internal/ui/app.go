@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -28,6 +30,12 @@ type appState struct {
 	dirty       bool
 	logPath     string
 	isChatOpen  bool
+
+	// Pre-warmed chat page: created and server-started at TUI launch so the
+	// first Chat open is instant. Access only via prewarm.Swap / prewarm.Load.
+	prewarm    atomic.Pointer[chatPage]
+	rootCtx    context.Context
+	rootCancel context.CancelFunc
 }
 
 func Run() error {
@@ -52,6 +60,7 @@ func Run() error {
 	}
 
 	logPath := filepath.Join(filepath.Dir(path), "gateway.log")
+	rootCtx, rootCancel := context.WithCancel(context.Background())
 	state := &appState{
 		app:         tview.NewApplication(),
 		pages:       tview.NewPages(),
@@ -62,9 +71,12 @@ func Run() error {
 		hasOriginal: hasOriginal,
 		backupPath:  backupPath,
 		logPath:     logPath,
+		rootCtx:     rootCtx,
+		rootCancel:  rootCancel,
 	}
 
 	state.push("main", state.mainMenu())
+	go state.triggerPrewarm()
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow)
 	root.AddItem(bannerView(), 6, 0, false)
@@ -72,7 +84,15 @@ func Run() error {
 	root.AddItem(footerView(), 1, 0, false)
 
 	if err := state.app.SetRoot(root, true).EnableMouse(false).Run(); err != nil {
+		rootCancel()
 		return err
+	}
+	rootCancel()
+	// Shut down any pre-warmed page that was never claimed.
+	if pre := state.prewarm.Swap(nil); pre != nil {
+		pre.cancel()
+		pre.loop.Close()
+		pre.msgBus.Close()
 	}
 	return nil
 }
@@ -360,6 +380,20 @@ func rootChannelLabel(valid bool) string {
 	return "Channel"
 }
 
+// triggerPrewarm creates a fresh chatPage and starts the llama-server so it is
+// ready before the user opens Chat. Safe to call from any goroutine.
+func (s *appState) triggerPrewarm() {
+	if !s.isActiveModelValid() {
+		return
+	}
+	cp, err := s.newChatPage()
+	if err != nil {
+		return
+	}
+	s.prewarm.Store(cp)
+	cp.preWarm(s.rootCtx)
+}
+
 func (s *appState) openChat() {
 	if !s.isActiveModelValid() {
 		s.showMessage("Model required", "Select a valid model before opening chat")
@@ -368,11 +402,32 @@ func (s *appState) openChat() {
 	if !s.applyChangesValidated() {
 		return
 	}
-	cp, err := s.newChatPage()
-	if err != nil {
-		s.showMessage("Chat failed", err.Error())
-		return
+
+	// Reuse the pre-warmed page if its engine matches the currently selected model.
+	// If the model was changed since pre-warm, discard the stale page and create a fresh one.
+	currentEngine := strings.TrimSpace(s.config.Agents.Defaults.Model)
+	var cp *chatPage
+	if pre := s.prewarm.Swap(nil); pre != nil {
+		if pre.engineKey == currentEngine {
+			cp = pre
+		} else {
+			go func() {
+				pre.cancel()
+				pre.loop.Close()
+				pre.msgBus.Close()
+			}()
+		}
 	}
+
+	if cp == nil {
+		var err error
+		cp, err = s.newChatPage()
+		if err != nil {
+			s.showMessage("Chat failed", err.Error())
+			return
+		}
+	}
+
 	s.isChatOpen = true
 	s.push("chat", cp.flex)
 	s.app.SetFocus(cp.input)

@@ -2,7 +2,7 @@
 
 An interactive chat surface inside `cmd/qclaw-launcher-tui` that lets users test both the **Direct** (pre-router + single LLM call, token streaming) and **Agentic** (full agent loop, tools, streaming) paths without ever leaving the TUI. The previous `Start Talk` action suspended the TUI and dropped into `qclaw agent` in the host terminal; this page replaces it.
 
-**Status:** implemented — `QClaw-v2` branch, commit `740bfa5`.
+**Status:** implemented — `QClaw-v2` branch. Server pre-warms at TUI launch.
 
 ---
 
@@ -98,9 +98,9 @@ The TUI consumes this existing API directly — no changes to `pkg/agent` or `pk
 
 ### 1. Llama-server lifecycle
 
-**Decision:** the `AgentLoop`'s provider (`llamaserver.Provider`) owns the llama-server process. The chat page creates a fresh `AgentLoop` (and therefore a fresh provider) on page entry via `newChatPage()`. The provider's `ensureServer()` spawns `llama-server` on the first `Chat()` or `ChatStream()` call and keeps it running for the lifetime of the page.
+**Decision:** the `AgentLoop`'s provider (`llamaserver.Provider`) owns the llama-server process. A `chatPage` is pre-created at TUI startup by `appState.triggerPrewarm()` and its server is started immediately via `llamaserver.Provider.WarmUp()`. When the user opens Chat, the pre-warmed page is claimed atomically from `appState.prewarm` — no cold start at interaction time.
 
-The cold start (3–5 min on Uno Q) is deferred to the first submit. During the wait, the input placeholder shows `⊙ thinking…`. The `AgentLoop` and `MessageBus` are closed in a background goroutine when the page exits (ESC or context cancel) so the UI is never blocked.
+If the model engine key changed since pre-warm (the user switched models), the stale page is discarded and a fresh one is created. After chat page close, the old server is shut down (`loop.Close()` → `Provider.Close()` → `cmd.Wait()`) and then a new pre-warm is triggered for the next open. On TUI exit, any unclaimed pre-warmed page is shut down before returning.
 
 Both Direct and Agentic mode share the same `AgentLoop` and therefore the same llama-server process — no double-spawn on mode switch.
 
@@ -122,8 +122,9 @@ Both Direct and Agentic mode share the same `AgentLoop` and therefore the same l
 
 | File | Change | Actual LoC |
 |---|---|---|
-| `cmd/qclaw-launcher-tui/internal/ui/chat.go` | New — `chatPage` struct, both modes, toggle, lifecycle | 327 |
-| `cmd/qclaw-launcher-tui/internal/ui/app.go` | Replace `Start Talk` with `Chat`; `isChatOpen`; `openChat()`; mutual-exclusion | +35 / -19 |
+| `cmd/qclaw-launcher-tui/internal/ui/chat.go` | New — `chatPage` struct, both modes, toggle, lifecycle, `preWarm()` | 351 |
+| `cmd/qclaw-launcher-tui/internal/ui/app.go` | Replace `Start Talk` with `Chat`; pre-warm orchestration; `isChatOpen`; mutual-exclusion | +72 / -19 |
+| `pkg/providers/llamaserver/provider.go` | Add `WarmUp(ctx, model)` — calls `ensureServer` without an LLM call | +5 |
 
 `pkg/agent`, `pkg/providers`, and `style.go` were not modified — the TUI uses existing public APIs only.
 
