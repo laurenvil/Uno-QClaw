@@ -1,314 +1,227 @@
-# Launching and Debugging the llama-cli Provider
+# Launching and Debugging the llamaserver Provider
 
-A developer's quick reference for the **`qclaw-llamaCLI` track**: how
-`pkg/providers/llamacli` actually drives `engines/llamacli/mpu/llama-cli`
-end-to-end, how to verify each layer in isolation, and where to look when
-something breaks.
+Developer reference for **`pkg/providers/llamaserver`** — the persistent on-device inference provider used by all three QClaw execution paths (Agentic, Direct, TUI Chat). Covers how to verify each layer in isolation and where to look when something breaks.
 
-If you just want to *run* QClaw, see
-[`setup-walkthrough.md`](setup-walkthrough.md). This file is for people
-who need to *see inside* the provider — diff a regression, attach a
-debugger, isolate a failure between the agent loop and the inference
-subprocess, or port the same pattern into a sibling track.
+For general operation instructions see [`setup-walkthrough.md`](setup-walkthrough.md). For architecture context see [`architecture-study-bible.md`](architecture-study-bible.md).
 
 ---
 
 ## 1. Mental model
 
 ```
-agent loop / channel
+Agent loop / TUI chat page / qclaw direct
     │
-    │  protocoltypes.Message[], tools[], model, options
+    │  providers.LLMProvider.Chat() / ChatStream() / WarmUp()
     ▼
-llamacli.Provider.Chat(ctx, ...)               (pkg/providers/llamacli/provider.go)
+pkg/providers/llamaserver.Provider              (pkg/providers/llamaserver/provider.go)
     │
-    │  1. resolveModel(...)        → absolute path under ~/models/
-    │  2. renderPrompt(...)        → ChatML transcript, single string
-    │  3. buildGrammar(tools)      → GBNF: text envelope OR tool envelope
-    │  4. exec.CommandContext(...) → fork+exec the binary
+    │  ensureServer(ctx, model)                 — called on first Chat/ChatStream/WarmUp
+    │    resolveModel(model) → absolute path    — ~/models/<name>[.gguf]
+    │    exec.Command(binary, pinned + extra)   — spawn child process
+    │    inject LD_LIBRARY_PATH=<lib_path>:...  — for dynamically-linked builds
+    │    poll GET /health until 200 OK          — up to 30 s
+    │    mark p.initialized = true              — subsequent calls skip spawn
     │
+    │  inner openai_compat.Provider             — wraps the live HTTP server
     ▼
-engines/llamacli/mpu/llama-cli                 (assix snapshot, llama.cpp b9099)
-    │
-    │  -m <model>  -p <prompt>  --grammar <gbnf>
-    │  -c <ctx> -t <threads>  --temp <T>  -n <max_tokens>
-    │  -st  --reasoning off
-    │
-    │  mmap GGUF (≈10 s cold, ≈0 s warm-cache)
-    │  compile GBNF        (≈100 ms)
-    │  prefill prompt      (10.6 t/s on Uno Q for 0.8B Q4_0)
-    │  decode response     (~8.8 t/s warm short; ~5 t/s sustained)
-    │  emit envelope JSON  → stdout
-    │  exit
-    │
+HTTP POST 127.0.0.1:<port>/v1/chat/completions
+    │  ChatStream: SSE — reads delta chunks, accumulates tool_calls, calls onToken
+    │  Chat:       blocks until [DONE]
     ▼
-extractJSON(stdout) → parseEnvelope(payload)   (pkg/providers/llamacli/provider.go)
-    │
-    │  envelope shape: {"text":"…"}  OR  {"tool_call":{"name":…, "arguments":{…}}}
+engines/yzma/lib/llama-server                   (b9127, ARMv8.0, CPU-only)
+    │  Model: mmap'd once at first /health → stays in RAM across requests
+    │  Decode: ~8–11 tok/s on Qwen3.5-0.8B-Q4_0 (Cortex-A53 × 4)
     ▼
-LLMResponse{ Content, ToolCalls, ... }
+LLMResponse { Content, ToolCalls }
 ```
 
-Every `Chat()` is **one process**. There is no daemon, no port, no shared
-context across calls. If two `Chat()` calls happen concurrently you have
-two `llama-cli` processes (each peaking ~1.1 GB RSS) racing for the four
-A53 cores.
+One server process per `*Provider` instance. The TUI pre-warms via `WarmUp()` at launch; Paths A and B start it on the first `Chat()` call. The child is killed in `Provider.Close()` (or `Stop()`).
 
 ---
 
-## 2. Pre-flight: five things to verify in order
+## 2. Pre-flight checks
 
-When QClaw isn't responding, walk these checks **before** turning on debug
-logging — they isolate the failure to a single layer in seconds.
+Walk these in order before enabling debug logging.
 
 ### 2.1 Binary present and executable
 
 ```bash
-ls -la engines/llamacli/mpu/llama-cli
-# must be -rwxr-xr-x and ~12 MB
-./engines/llamacli/mpu/llama-cli --version 2>&1 | head -2
-# version: 9099 (5d5d2e15d)
-# built with GNU 13.3.0 for Linux aarch64
+ls -la engines/yzma/lib/llama-server
+# expect: -rwxr-xr-x, ~9 MB
+LD_LIBRARY_PATH=engines/yzma/lib engines/yzma/lib/llama-server --version 2>&1 | head -3
+# version: 9127 (a9883db8e)
+# built with GNU 14.2.0 for Linux aarch64
 ```
 
-Recovery: `git submodule update --init --recursive engines/llamacli`. If
-the file is on disk but not executable, `chmod +x` it (some clone tools
-on weird filesystems strip the exec bit).
+Recovery: `cp /home/arduino/ArduinoApps/yzma/lib/llama-server engines/yzma/lib/` then `chmod +x`.
 
-### 2.2 Model present and resident
+### 2.2 Model present
 
 ```bash
 ls -la ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf   # ~490 MB
-# Optional: check page-cache residency
-vmtouch ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf  # apt install vmtouch
 ```
 
-Recovery (missing): see [setup-walkthrough.md §3](setup-walkthrough.md#step-3-download-the-ai-model).
-Recovery (cold cache, want warm): `cat ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf > /dev/null` pulls it into the page cache and the next `Chat()` skips the ~10 s mmap cost.
+Recovery (missing): re-run `make qclaw-setup` or download directly from HuggingFace (see setup-walkthrough §3).
 
-### 2.3 Binary can decode end-to-end on its own
+### 2.3 Server can start and respond
 
-This is the *most useful* single check — it isolates the inference
-subprocess completely:
+Spawn it manually with the same flags the provider uses:
 
 ```bash
-./engines/llamacli/mpu/llama-cli \
-  -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  -p "Reply with one word: pong" \
-  -st --no-warmup --reasoning off \
-  -c 2048 -t 4 -n 8 --temp 0.0 2>&1 | tail -20
+LD_LIBRARY_PATH=engines/yzma/lib \
+  engines/yzma/lib/llama-server \
+    -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
+    --host 127.0.0.1 --port 8083 \
+    -t 4 -c 8192 -np 1 \
+    --reasoning off --jinja --log-disable &
+
+# Wait for health (up to 5 min cold)
+until curl -sf http://127.0.0.1:8083/health; do sleep 5; done
+echo "Server ready"
 ```
 
-A healthy run prints something like:
-
-```
-pong<|im_end|>
-[ Prompt: 10.6 t/s | Generation: 8.8 t/s ]
-```
-
-Common failures and what they mean:
-
-| Symptom | Meaning |
-|---|---|
-| Hangs at `>` prompt, no output | You forgot `-st` (or `--single-turn`); the binary dropped into interactive mode. |
-| `Unsupported GPU: FD702 / drop unsupported device.` | Normal on `qclaw-llamaCLI`. The binary falls back to CPU; throughput numbers above still apply. |
-| `Failed to initialize samplers: std::exception` | You passed `--json-schema` (broken in this fork). Use `--grammar` with hand-written GBNF — that's what the provider does. |
-| Segfault | The binary itself is broken (rare). Re-pull the submodule. |
-| Token rate <2 t/s | Either thermal throttling, swap thrashing (`free -h`), or page cache cold (see 2.2). |
-
-### 2.4 Grammar parses
-
-The provider's hand-written GBNF lives in `buildGrammar()` and accepts
-two shapes:
-
-```
-text-envelope  → {"text": "..."}
-tool-envelope  → {"tool_call":{"name":"<one-of>","arguments":{...}}}
-```
-
-You almost never need to touch it; if you do, paste the candidate grammar
-into the binary directly:
+Then send a minimal completion:
 
 ```bash
-./engines/llamacli/mpu/llama-cli \
-  -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  -p "say hi" \
-  --grammar 'root ::= "{\"text\":\"" [a-zA-Z0-9 .,!?]+ "\"}"' \
-  -st --reasoning off -c 256 -t 4 -n 32 --temp 0.0
+curl -s http://127.0.0.1:8083/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"x","messages":[{"role":"user","content":"Reply with one word: pong"}],"max_tokens":4}' \
+  | python3 -m json.tool
 ```
 
-If the binary prints `Failed to parse grammar` you have a GBNF syntax
-error; the binary's parser is upstream llama.cpp's and the error message
-points to the offending rule.
+A healthy response contains `"content": "pong"` (or similar). Kill with `pkill -f llama-server` when done.
 
-### 2.5 Provider-level smoke
-
-The integration test exercises the entire stack — prompt rendering,
-grammar build, subprocess spawn, stdout capture, envelope parse,
-`LLMResponse` decode:
+### 2.4 Provider-level smoke test
 
 ```bash
-go test -tags=integration -run TestIntegration_LlamaCLIText \
-  -v -count=1 -timeout 10m ./pkg/providers/llamacli/
+go test ./pkg/providers/llamaserver/... -run TestProvider -v -count=1 -timeout 30m
 ```
 
-A successful run ends with `--- PASS` and a `Chat()` walltime of ~14 s
-cold or ~10 s warm. A `TestIntegration_LlamaCLIToolCall` companion
-verifies the tool envelope path.
+This exercises the full stack: spawn, health-check, `Chat()`, response decode. A `PASS` means the Go layer and the binary are in sync.
 
-If 2.1–2.4 pass and 2.5 fails, the bug is in the provider Go code, not in
-the inference engine.
+If 2.1–2.3 pass but 2.4 fails, the bug is in the provider Go code.
 
 ---
 
-## 3. The bench script
+## 3. Debug logging
 
-`scripts/bench-llamacli-provider.sh` is the **golden reproducer**. It
-captures all five layers above in three phases:
-
-```bash
-bash scripts/bench-llamacli-provider.sh
-```
-
-| Phase | What it measures | Pass criteria |
-|---|---|---|
-| **A.1–A.3** | Direct binary t/s at n=16/64/128 decode | warm pp ≈ 10.6, tg ≈ 8.8 (short) / ~4.8 (sustained) |
-| **B.1** | Cold start (mmap + grammar compile + 1 token) | ~12 s wall |
-| **C.1–C.2** | Go provider end-to-end (text + tool envelopes) | text ≈ 14 s, tool ≈ 20 s cold |
-
-Raw output lands in `docs/GPU/benchmark-raw.txt`; the curated report is
-[`docs/GPU/benchmark-results.md`](../../GPU/benchmark-results.md). Any
-regression you suspect should reproduce in one of these phases or it
-isn't in the provider.
-
----
-
-## 4. Provider debug logging
-
-Run the agent with verbose output:
+The provider logs through `pkg/logger`. Enable verbose output:
 
 ```bash
-./build/qclaw gateway --debug
+QCLAW_DEBUG=1 qclaw direct --model yzma -m "test"
 ```
 
-For every `Chat()` the provider logs:
+On first call the provider logs the spawn command:
 
 ```
-llamacli: exec /home/arduino/ArduinoApps/QClaw/engines/llamacli/mpu/llama-cli \
+llamaserver: starting server: engines/yzma/lib/llama-server \
   -m /home/arduino/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  -st --reasoning off \
-  --grammar 'root ::= …' \
-  -c 2048 -t 4 \
-  -p '<|im_start|>system\n…<|im_end|>\n<|im_start|>user\n…<|im_end|>\n<|im_start|>assistant\n' \
-  -n 512 --temp 0.0
-llamacli: exit 0 in 14.331s (stdout 312 B, stderr 4096 B)
+  --host 127.0.0.1 --port 8083 -t 4 -c 8192 -np 1 \
+  --reasoning off --jinja --log-disable
+llamaserver: server ready on port 8083
 ```
 
-If exit ≠ 0 the provider returns the wrapped error including the
-truncated last 1000 B of stderr — usually enough to spot the cause
-(missing model, malformed grammar, OOM kill).
+On every subsequent call:
+```
+llamaserver: POST /v1/chat/completions (stream=true)
+llamaserver: response in 11.84s, 83 tokens
+```
 
-To replay a specific failed call by hand, copy the `exec …` line and run
-it directly (drop the `-p` value into a file if it's too long for
-`bash -c`).
-
----
-
-## 5. Common failure modes
-
-### 5.1 `llama-cli exec failed: signal: killed`
-
-The kernel OOM-killed the subprocess. Each `llama-cli` peaks at ~1.1 GB
-RSS; on a 4 GB Uno Q two concurrent `Chat()` calls plus the agent +
-gateway + the page cache can hit the OOM threshold. Mitigations: serialise
-calls at the channel layer, or use the 0.6B Q4_0 model (~340 MB RSS) for
-high-concurrency loads.
-
-### 5.2 `context deadline exceeded` / `signal: killed: context canceled`
-
-The Go-side timeout fired. Default `p.timeout` is set via
-`WithTimeout(...)` at construction. Bump it in
-`~/.qclaw/config.json` (`request_timeout: 1200`) — cold-load + a 200-tok
-decode can easily exceed 30 s on this board.
-
-### 5.3 `parsing llama-cli output: invalid character 'A' …`
-
-The binary emitted free-form text before the JSON envelope (usually
-because the grammar didn't engage — check that `--grammar` is being
-passed; some forks of `llama-cli` ignore unknown flags silently). The
-provider's `extractJSON` tries to find the first balanced JSON object in
-stdout; if even that fails it returns the truncated stdout in the error
-so you can see what the model actually said.
-
-### 5.4 Tool envelope arrives with wrong tool name
-
-The grammar `tool-name` rule is a literal alternation of registered tool
-names — if a tool isn't in `tools[]`, the model literally cannot emit it.
-Confirm `tools[]` reaching `Chat()` matches the agent's
-`ToolRegistry.Names()`. (The agent loop in `pkg/agent/loop.go` builds
-this list once per turn.)
-
-### 5.5 Model reasons before answering despite `--reasoning off`
-
-`--reasoning off` is belt-and-braces. The actual suppressor is `/no_think`
-in `workspace/SOUL.md`'s first line. If you customised `SOUL.md`, restore
-the directive — without it, Qwen 3.5 spends ~300 tokens of `<think>`
-content before the constrained envelope, easily pushing wall time past
-30 s on a Q4_0 0.8B.
+To replay a failed call, copy the `POST` body from your logs and send it directly with curl (see 2.3).
 
 ---
 
-## 6. Attaching gdb / strace
+## 4. Common failure modes
 
-For deep dives — usually only useful when the binary itself hangs.
+### 4.1 `fork/exec …/llama-server: no such file or directory`
+
+The `api_base` in `~/.qclaw/config.json` points to a missing binary. Check:
 
 ```bash
-# Trace a single Chat() syscall-by-syscall
-strace -f -o /tmp/llama-trace.log \
-  ./engines/llamacli/mpu/llama-cli \
-  -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  -p "test" -st --reasoning off -c 256 -t 4 -n 4 --temp 0.0
-less /tmp/llama-trace.log     # look for ENOMEM, EFAULT, mmap returning -1
+cat ~/.qclaw/config.json | python3 -c "import json,sys; [print(e.get('model_name'), e.get('api_base')) for e in json.load(sys.stdin)['model_list']]"
 ```
+
+Fix: ensure the path matches the actual binary location (`engines/yzma/lib/llama-server`). The provider resolves relative paths from CWD — run `qclaw` from the repo root.
+
+### 4.2 `model_name` / `model` mismatch
+
+`providers.CreateProvider()` uses `agents.defaults.model_name` to find the model_list entry. If `model_name` names a deleted engine, the binary path from that entry is used and fails.
 
 ```bash
-# Live-attach to a hung agent's child subprocess
-ps -ef | grep llama-cli | grep -v grep   # find PID
-sudo gdb -p <PID>
-(gdb) bt          # see where it's stuck
-(gdb) thread apply all bt   # all threads
+python3 -c "
+import json
+c = json.load(open('/home/arduino/.qclaw/config.json'))
+print('model:', c['agents']['defaults']['model'])
+print('model_name:', c['agents']['defaults']['model_name'])
+"
 ```
 
-The binary is stripped (assix doesn't ship symbols) — backtraces will be
-mostly hex addresses inside `libllama.so` linked statically. For better
-symbols, rebuild from `engines/llamacli/llama.cpp/` with
-`-DCMAKE_BUILD_TYPE=RelWithDebInfo` and substitute the binary; the assix
-source tree is enough to do this without checking out anything else.
+Both `model` and `model_name` should be `"yzma"`. Fix: update `model_name` in `~/.qclaw/config.json` to match the engine key.
+
+### 4.3 `llama-server initialization failed: context deadline exceeded`
+
+The health-check loop timed out (default 30 polls × 1 s = 30 s). On a cold Uno Q boot the model mmap can take several minutes. Causes:
+
+- `request_timeout` too short in the model_list entry — set ≥ 1200 s.
+- System swap thrashing — `free -h`; cold-start needs ~1.1 GB RSS free.
+- Binary failed silently — check if the process is still running: `ps -ef | grep llama-server`.
+
+### 4.4 HTTP 500 `"Context size has been exceeded"`
+
+The `--parallel` flag defaulted to auto (≥2) and divided ctx_size per slot. With `ctx_size=8192` and 4 slots the effective context is ~2048 — too small for the QClaw system prompt. Fix: ensure `"parallel": 1` is in the `extra_body` of the engine entry.
+
+### 4.5 `signal: killed` during inference
+
+OOM kill. Each llama-server peaks ~1.1 GB RSS. Check: `dmesg | grep -i "killed process"`. Mitigation: close other memory-heavy processes; use the 0.6B Q4_0 model (~340 MB) for low-RAM scenarios.
+
+### 4.6 `address already in use` on port 8083
+
+A previous llama-server instance is still running. Kill it:
+
+```bash
+pkill -f "llama-server.*8083"
+# or find the PID:
+ss -tlnp | grep 8083
+```
+
+The TUI's pre-warm goroutine correctly waits for `loop.Close()` + `cmd.Wait()` before re-spawning, so this should only appear after an unclean exit.
+
+### 4.7 TUI Chat shows stale engine after config change
+
+The pre-warmed `chatPage` was built from the config at TUI launch time. If you changed `agents.defaults.model` in the TUI and then opened Chat, `openChat()` checks `pre.engineKey == currentEngine` and discards the stale page. If you see the old engine, close and reopen Chat — the fresh page reads the updated config.
 
 ---
 
-## 7. Where to look in the code
+## 5. Attaching to a running server
 
-| Concern | File | Function |
-|---|---|---|
-| Provider entry point | `pkg/providers/llamacli/provider.go` | `(p *Provider) Chat(...)` |
-| ChatML prompt rendering | `pkg/providers/llamacli/provider.go` | `renderPrompt(messages)` |
-| GBNF grammar construction | `pkg/providers/llamacli/provider.go` | `buildGrammar(tools)` |
-| Stdout JSON extraction | `pkg/providers/llamacli/provider.go` | `extractJSON(s)` |
-| Envelope decode | `pkg/providers/llamacli/provider.go` | `parseEnvelope(payload)` |
-| Unit tests (no binary) | `pkg/providers/llamacli/provider_test.go` | `TestRenderPrompt_ChatML`, … |
-| Integration tests (real binary) | `pkg/providers/llamacli/provider_integration_test.go` | `TestIntegration_LlamaCLIText`, `TestIntegration_LlamaCLIToolCall` |
-| Launch script | `scripts/qclaw-launch.sh` | top-level driver |
-| Reproducer | `scripts/bench-llamacli-provider.sh` | benchmarks all phases |
-| Architecture writeup | `docs/GPU/llama-cli-provider-whitepaper.md` | end-to-end design rationale |
-| Benchmark numbers | `docs/GPU/benchmark-results.md` | V1 numbers behind §3 above |
+```bash
+# Find the PID
+ps -ef | grep "llama-server" | grep -v grep
+
+# Watch live HTTP traffic (requires sudo / CAP_NET_ADMIN)
+sudo tcpdump -i lo -A -s 0 'tcp port 8083'
+
+# Live syscall trace
+strace -p <PID> -e trace=network,read,write 2>&1 | grep -v EAGAIN | head -50
+```
+
+The server has no debug endpoint, but `GET /props` returns the loaded model name and context size, and `GET /slots` returns per-slot KV state (useful for confirming `-np 1`).
 
 ---
 
-## 8. Related tracks
+## 6. Where to look in the code
 
-| Branch | What it adds | Where to read |
+| Concern | File | Symbol |
 |---|---|---|
-| `QClaw-Client-V2` | OpenCL (Wang + v4.4) and Vulkan (Sensai v5) GPU variants alongside this CPU baseline | `docs/GPU/v2/benchmark-results.md` |
-| `QClaw-GPU-CLI` | Broader GPU experiment notes | branch HEAD |
-| `QClaw-v2` | Direct path re-enabled as native Go (`ProcessDirectSingleTurn` / `qclaw direct`); benchmark runs 1–5 under `docs/QClaw/v2/benchmarks/` | `docs/GPU/V3/direct-path-implementation.md` |
+| Provider entry point | `pkg/providers/llamaserver/provider.go` | `(p *Provider) Chat`, `ChatStream`, `WarmUp` |
+| Server spawn + health-check | `pkg/providers/llamaserver/provider.go` | `ensureServer` |
+| Model path resolution | `pkg/providers/llamaserver/provider.go` | `resolveModel` |
+| Factory wiring (config → provider) | `pkg/providers/factory_provider.go` | `CreateProviderFromConfig` (`llama-server` case) |
+| TUI pre-warm orchestration | `cmd/qclaw-launcher-tui/internal/ui/app.go` | `triggerPrewarm`, `openChat` |
+| TUI chat page + preWarm | `cmd/qclaw-launcher-tui/internal/ui/chat.go` | `chatPage.preWarm`, `chatPage.close` |
+| Streaming token pipeline | `pkg/providers/llamaserver/provider.go` | `ChatStream` SSE loop |
+| Direct path (non-TUI) | `pkg/agent/loop.go` | `ProcessDirectSingleTurnStream` |
+| Agentic path (non-TUI) | `pkg/agent/loop.go` | `ProcessAgenticWithProgressStream` |
+| TUI chat design rationale | `docs/QClaw/development/tui-chat-design.md` | — |
+| Engine binary + .so files | `engines/yzma/lib/` | `llama-server`, `libggml-*.so` |
+| Benchmark numbers | `docs/benchmarks/BENCHMARK_SUMMARY.md` | Runs 6–9 |

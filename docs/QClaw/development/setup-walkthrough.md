@@ -206,14 +206,13 @@ No Go changes needed for a new llama-server build — add a `model_list` entry w
 
 ## Step 5: Launch
 
-`make qclaw-agentic` brings up the Telegram gateway (if configured) and the agent terminal. The **first** `Chat()` call spawns the `yzma` llama-server child process (cold-load: ~3–5 min for the 0.8B Q4_0 model). The process stays up across subsequent requests — follow-up turns skip the cold-load cost entirely. The server is killed when the QClaw process exits.
+Three execution paths share the same model, system prompt, and 15-skill tree. The llama-server child process (cold-load: ~3–5 min for the 0.8B Q4_0) is spawned **once** per process lifetime and kept up across all subsequent requests. The Path C TUI pre-warms the server at launch rather than waiting for the first message.
 
 Sessions persist across QClaw restarts via `~/.qclaw/workspace/sessions/`. To force a clean cold start for a controlled benchmark:
 
 ```bash
 pkill -f llama-server                              # kill any persistent server
 rm -f ~/.qclaw/workspace/sessions/*                # drop session history
-rm -f ~/.qclaw/llama-server.pid ~/.qclaw/llama-server.log
 ```
 
 ### Path A — Agentic (default, supported)
@@ -262,6 +261,25 @@ Use it for fast factual Q&A, pinout lookups, and sketch generation where you int
 
 Press `Ctrl+C` to stop cleanly (either path).
 
+### Path C — TUI Chat (`make qclaw-tui`)
+
+```bash
+make qclaw-tui
+```
+
+Launches the full-screen TUI (`cmd/qclaw-launcher-tui`). Unlike Path A/B, the llama-server is **pre-warmed at TUI startup** — `appState.triggerPrewarm()` runs `llamaserver.Provider.WarmUp()` in a background goroutine as soon as the main menu appears. By the time you navigate to Chat, the cold-start cost has typically been paid.
+
+The Chat page inside the TUI supports two modes switchable with F2:
+
+| Mode | API | Notes |
+|---|---|---|
+| **Direct** | `ProcessDirectSingleTurnStream` | Pre-router + single LLM call; token-by-token streaming |
+| **Agentic** | `ProcessAgenticWithProgressStream` | Full agent loop, tools, streaming; tool events shown inline |
+
+After closing Chat (Esc), the old server is shut down cleanly and a new pre-warmed page is created for the next open. The TUI also manages channel configuration and can launch the gateway (`Start Gateway`). Chat and Gateway are mutually exclusive — one disables the other in the menu.
+
+Keybindings inside Chat: `F2` toggle mode, `Ctrl+L` clear output, `Esc` return to menu.
+
 ---
 
 ## Step 6: Verify Sketch Compilation (Agentic Path Only)
@@ -304,7 +322,7 @@ To verify the flash actually worked, watch the board's LED matrix or measure the
 | `make qclaw-setup` | Reinstall system prompt and skills tree after a git pull |
 | `make qclaw-arduino-setup` | Install or update arduino-cli and the Uno Q board core |
 | `make qclaw-stop` | Stop the QClaw gateway/agent (no llama-server to kill on this track) |
-| `make qclaw-tui` | Launch the graphical channel configuration panel |
+| `make qclaw-tui` | **TUI launcher**: channel config + in-app Chat (Direct & Agentic modes, pre-warmed server) |
 
 ---
 

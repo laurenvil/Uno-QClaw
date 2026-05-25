@@ -226,11 +226,11 @@ The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` a
 
 ---
 
-## Part 3: How QClaw Works — The Two Data Paths
+## Part 3: How QClaw Works — The Three Data Paths
 
-QClaw-v2 has two execution paths. They share the same llama-server engine, model, system prompt, and skills tree — they differ only in what surrounds the LLM call.
+QClaw-v2 has three execution paths. They share the same llama-server engine, model, system prompt, and skills tree — they differ in what surrounds the LLM call and how the server lifetime is managed.
 
-> **Implementation note (QClaw-v2).** Both paths use `pkg/providers/llamaserver`, a Go driver that **spawns one `llama-server` child process** (`engines/yzma/lib/llama-server`) and **keeps it up across requests**, proxying chat completions through 127.0.0.1 over the OpenAI-compatible `/v1/chat/completions` endpoint. The server is health-checked on `/health` before the first call. Only the first call pays the cold model-load cost; follow-up calls within the same QClaw process skip mmap, kernel allocation, and warmup entirely. The direct path is a native Go feature (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`) — it is not the retired Python REPL (`qclaw-direct-chat.py`).
+> **Implementation note (QClaw-v2).** All three paths use `pkg/providers/llamaserver`, a Go driver that **spawns one `llama-server` child process** (`engines/yzma/lib/llama-server`) and **keeps it up across requests**, proxying chat completions through 127.0.0.1 over the OpenAI-compatible `/v1/chat/completions` endpoint. The server is health-checked on `/health` before the first call. Only the first call per QClaw process pays the cold model-load cost (~3–5 min on Uno Q); follow-up turns skip mmap, kernel allocation, and warmup entirely. **Path C (TUI) additionally calls `WarmUp()` at startup**, so the server is ready before the first user message.
 
 ### Path A — Agentic (`make qclaw-agentic`)
 
@@ -355,6 +355,60 @@ Single response printed to terminal → process exits → server is killed
 ```
 
 The direct path **cannot** compile, upload, or call any tool — sketches come back as text. Its advantage: no tool-schema overhead (~1,800 chars saved from the system prompt) and no multi-iteration loop overhead, yielding ~33% lower latency on factual prompts vs. the agentic path at 0.8B scale.
+
+### Path C — TUI Chat (`make qclaw-tui`)
+
+The TUI (`cmd/qclaw-launcher-tui`) is a full-screen channel-configuration panel that also embeds an interactive chat surface. Unlike Paths A and B, it **pre-warms the llama-server at launch** rather than on the first message.
+
+```
+TUI starts (make qclaw-tui)
+    │
+    ▼
+appState.triggerPrewarm()                          (cmd/qclaw-launcher-tui/internal/ui/app.go)
+    │  Runs in a background goroutine immediately
+    │  newChatPage() → providers.CreateProvider() → llamaserver.Provider
+    │  Provider.WarmUp(rootCtx, model) → ensureServer() → spawns llama-server child
+    │  Polls /health until 200 OK → marks initialized=true
+    │  chatPage stored in appState.prewarm (atomic.Pointer[chatPage])
+    │
+    ▼
+User opens Chat menu item
+    │
+    ▼
+appState.openChat()
+    │  Swaps the pre-warmed chatPage out of appState.prewarm atomically
+    │  If engine key unchanged: reuse the pre-warmed page (server already running)
+    │  If engine changed since pre-warm: discard stale page, create fresh
+    │
+    ▼
+chatPage (Direct or Agentic mode, switchable with F2)
+    │
+    ├─ Direct mode  → ProcessDirectSingleTurnStream(ctx, text, sessionKey, onToken)
+    │    Pre-router runs, single LLM call, tokens streamed live to the output pane.
+    │    Session key: "tui:direct:N" (N = toggleCtr, resets on mode switch)
+    │
+    └─ Agentic mode → ProcessAgenticWithProgressStream(ctx, text, sessionKey, onProgress, onToken)
+         Full tool loop. Tool events (⚙ start / ✓ done / ✗ error) shown inline.
+         Session key: "tui:agentic:N"
+
+User presses Esc
+    │
+    ▼
+chatPage.close()
+    │  cp.cancel() — cancels in-flight LLM request context
+    │  goroutine: loop.Close() → Provider.Close() → kills child + cmd.Wait()
+    │  After child exits: go triggerPrewarm() — starts fresh pre-warm for next open
+    │
+    ▼
+Back to main menu (server cycling in background)
+```
+
+**Pre-warm / stale-page logic:**
+- `appState.prewarm` is an `atomic.Pointer[chatPage]` — always written/read via `Store`/`Swap`.
+- `openChat()` matches `pre.engineKey` against the current `agents.defaults.model`. Stale pages are shut down in a goroutine.
+- On TUI exit, any unclaimed pre-warmed page is shut down before `Run()` returns.
+
+**Mutual exclusion:** Chat and Gateway cannot run simultaneously. The Chat menu item is disabled while the gateway is running, and Start Gateway is disabled while a chat page is open.
 
 ### End-to-End Timing Budget
 
@@ -600,6 +654,18 @@ while True:
 
 The capability matrix depends on which execution path is active.
 
+**Path summary:**
+
+| | Path A — Agentic | Path B — Direct | Path C — TUI Chat |
+|---|---|---|---|
+| Make target | `make qclaw-agentic` | `make qclaw-direct` | `make qclaw-tui` |
+| LLM calls | Multi-iteration loop | Single call | Single call (Direct) / Loop (Agentic) |
+| Tools | ✅ 8 tools | ✗ | ✅ when in Agentic mode |
+| Streaming | ✅ (agentic tools + final) | ✗ | ✅ token-by-token |
+| Server start | On first message | On first message | **At TUI launch** |
+| Session key | per channel/user | CLI flag | `"tui:direct:N"` / `"tui:agentic:N"` |
+| Telegram | ✅ gateway | ✗ | ✗ |
+
 ### Agentic path (`make qclaw-agentic`)
 
 | Capability | How |
@@ -685,7 +751,9 @@ The QClaw-v2 inference path is `pkg/providers/llamaserver`. It owns the lifecycl
 | `WithExtraArgs([]string)` | `[]` | Verbatim string slice appended to the spawn command. The per-engine tuning escape hatch — any new llama-server flag can be added without a Go change |
 | `WithTimeout(time.Duration)` | 20 min | Cold-prefill budget on the underlying HTTP client. Set via `request_timeout` (seconds) in the model_list entry |
 
-**Lifecycle:** The first `Chat()` call to a given engine triggers `ensureServer()`, which `exec.Command`s the binary with the pinned + extra flags, polls `/health` until 200 OK, and marks the provider initialized. Every subsequent call POSTs to `127.0.0.1:<port>/v1/chat/completions` with no further server cost. The child is killed when the QClaw process exits (`p.Stop()` in the gateway shutdown hook).
+**Lifecycle:** The first `Chat()`, `ChatStream()`, or `WarmUp()` call to a given engine triggers `ensureServer()`, which `exec.Command`s the binary with the pinned + extra flags, polls `/health` until 200 OK, and marks the provider initialized. Every subsequent call POSTs to `127.0.0.1:<port>/v1/chat/completions` with no further server cost. The child is killed when `Provider.Close()` is called (TUI chat page close, or process exit via gateway shutdown hook).
+
+**`WarmUp(ctx, model)`** — added for the TUI pre-warm path. Calls `ensureServer` without making an LLM request. Used by `chatPage.preWarm()` in `cmd/qclaw-launcher-tui/internal/ui/chat.go` to start the server at TUI launch rather than on the first message.
 
 ### `config/qclaw.config.json` — the multi-engine `model_list`
 
@@ -1030,6 +1098,14 @@ QClaw/
 │       │   ── Plug-and-play sensors ──
 │       └── modulino/                                        [Wave 3]
 │           └── SKILL.md
+├── cmd/
+│   ├── qclaw/                   # CLI binary (agentic gateway + direct subcommand)
+│   └── qclaw-launcher-tui/      # Full-screen TUI (make qclaw-tui)
+│       └── internal/ui/
+│           ├── app.go           #   appState, Run(), triggerPrewarm(), openChat()
+│           ├── chat.go          #   chatPage: Direct/Agentic modes, preWarm(), close()
+│           ├── style.go         #   tview palette
+│           └── …               #   menu, model/channel config pages
 ├── config/
 │   └── qclaw.config.json       # ← Hardware-tuned config for Uno Q
 ├── scripts/
