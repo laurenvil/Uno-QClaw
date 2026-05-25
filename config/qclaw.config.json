@@ -58,7 +58,7 @@
     {
       "model_name": "yzma",
       "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-      "api_base": "/home/arduino/ArduinoApps/yzma/lib/llama-server",
+      "api_base": "yzma/lib/llama-server",
       "api_key": "local",
       "request_timeout": 1200,
       "extra_body": {
@@ -67,7 +67,7 @@
         "ctx_size": 8192,
         "parallel": 1,
         "port": 8083,
-        "lib_path": "/home/arduino/ArduinoApps/yzma/lib",
+        "lib_path": "yzma/lib",
         "extra_args": [
           "--flash-attn", "on",
           "--mlock",
