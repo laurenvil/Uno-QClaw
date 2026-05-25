@@ -23,6 +23,10 @@ QClaw ships three execution paths sharing the same model, system prompt, and 15-
 - **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills.
 - **TUI Chat** — full-screen launcher TUI with an embedded chat surface (Direct and Agentic modes, live streaming, server pre-warmed at launch).
 
+
+https://github.com/user-attachments/assets/05a0e896-7eb6-4bb8-b494-1abc26eec687
+
+
 ---
 
 ## What QClaw Does
@@ -73,6 +77,8 @@ qclaw direct --model yzma -m "Which pins do PWM?"
 ```
 
 `make qclaw-install` builds the binary, installs the system prompt and 15-skill tree, downloads `arduino-cli`, installs the `arduino:zephyr` board core, and runs the interactive setup wizard. `make qclaw` is an alias for `make qclaw-agentic`.
+
+<img width="4000" height="3000" alt="QClaw-TUI" src="https://github.com/user-attachments/assets/8f73e0da-bb7f-46d7-9415-9d667144ade2" />
 
 ---
 
