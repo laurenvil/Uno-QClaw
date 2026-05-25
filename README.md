@@ -17,10 +17,11 @@
 
 Forked from upstream [picoclaw](https://github.com/sipeed/picoclaw) — repo: [Uno-QClaw](https://github.com/laurenvil/Uno-QClaw) · current development branch: **`QClaw-v2`** · inference via the persistent **`pkg/providers/llamaserver`** provider with the `yzma` engine (self-contained at `engines/yzma/lib/`) · default model: Qwen3.5-0.8B Q4_0
 
-QClaw ships two execution paths sharing the same model, system prompt, and 15-skill tree:
+QClaw ships three execution paths sharing the same model, system prompt, and 15-skill tree:
 
 - **Agentic** — agent loop + 23-rule pre-router + 8 tools. End-to-end compile/flash, camera capture, MPU LED control, network diagnostics, I²C bus scan.
 - **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills.
+- **TUI Chat** — full-screen launcher TUI with an embedded chat surface (Direct and Agentic modes, live streaming, server pre-warmed at launch).
 
 ---
 
@@ -37,9 +38,11 @@ QClaw ships two execution paths sharing the same model, system prompt, and 15-sk
 | Report network state | Agentic | `network` tool → hostname, interfaces, default gateway (read-only) |
 | Scan Linux I²C buses | Agentic | `i2cdetect` tool → list `/dev/i2c-*`, `i2cdetect -y -r <bus>` |
 | Read/write workspace files | Agentic | `read_file`, `write_file`, `list_dir` |
-| Answer hardware questions | Both | Pre-router inlines the relevant skill content (15 skills covered) |
+| Answer hardware questions | All | Pre-router inlines the relevant skill content (15 skills covered) |
+| Chat with streaming tokens | TUI | Direct and Agentic modes; server pre-warmed at launch; F2 switches mode |
+| Channel configuration | TUI | Full-screen panel to configure Telegram, Discord, and other channels |
 | Telegram, terminal, SSH | Agentic | qclaw channel adapters |
-| Fully offline | Both | All inference, compilation, and flashing runs locally on the QRB2210 |
+| Fully offline | All | All inference, compilation, and flashing runs locally on the QRB2210 |
 
 ---
 
@@ -63,6 +66,7 @@ make qclaw-install
 # Start a session
 make qclaw-agentic    # agent loop + 8 tools — compile/upload/camera/sysfs_led/network/i2cdetect
 make qclaw-direct     # pre-router + single LLM call, no tools — fast Q&A
+make qclaw-tui        # full-screen TUI: channel config + in-app chat (server pre-warms at launch)
 
 # Or invoke directly
 qclaw direct --model yzma -m "Which pins do PWM?"
@@ -72,27 +76,23 @@ qclaw direct --model yzma -m "Which pins do PWM?"
 
 ---
 
-## Two Execution Paths
+## Three Execution Paths
 
-Both paths share the same `yzma` engine, the same `SOUL.md`, and the same 23-rule pre-router. They differ only in what surrounds the LLM call.
+All three paths share the same `yzma` engine, the same `SOUL.md`, and the same 23-rule pre-router. They differ in what surrounds the LLM call and how the server is started.
 
-| Aspect | `make qclaw-agentic` | `make qclaw-direct` |
-|---|---|---|
-| Agent loop (multi-iteration) | ✅ | ❌ (single call) |
-| Tools available | **8** | None |
-| Pre-router | ✅ (23 rules, 15 skills) | ✅ (same 23 rules) |
-| Compile sketches | ✅ | ❌ (text-only) |
-| Upload to board | ✅ flashes STM32U585 at `0x8100000` via OpenOCD | ❌ |
-| Camera frame capture | ✅ via `camera` tool | ❌ |
-| MPU LED control | ✅ via `sysfs_led` tool | ❌ |
-| Network introspection | ✅ via `network` tool | ❌ |
-| I²C bus scan | ✅ via `i2cdetect` tool | ❌ |
-| Telegram gateway | ✅ | ❌ (terminal only) |
-| Best for | Hardware actions, multi-step workflows | Fast factual Q&A across all 15 skills |
+| Aspect | `make qclaw-agentic` | `make qclaw-direct` | `make qclaw-tui` |
+|---|---|---|---|
+| Agent loop (multi-iteration) | ✅ | ❌ (single call) | ✅ in Agentic mode |
+| Tools available | **8** | None | **8** in Agentic mode |
+| Pre-router | ✅ 23 rules | ✅ same 23 rules | ✅ same 23 rules |
+| Token streaming | ✅ | ❌ | ✅ live in TUI |
+| Compile / upload sketches | ✅ | ❌ text-only | ✅ Agentic mode |
+| Camera / LED / network / I²C | ✅ | ❌ | ✅ Agentic mode |
+| Telegram gateway | ✅ | ❌ | ❌ (Chat ⊕ Gateway) |
+| Server start | On first message | On first message | **At TUI launch** |
+| Best for | Multi-step hardware workflows | Fast factual Q&A | Interactive testing, config, Q&A |
 
-The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. Use the direct path for fast factual Q&A and sketch generation (text-only); use the agentic path whenever you need to compile, flash, or call any hardware tool.
-
-The agent loop's response-format scaffolding contributes real quality on complex code generation, not just tool-call mechanics. The pre-router alone is necessary but not sufficient for harder prompts at 0.8B scale — use agentic mode for anything beyond simple Q&A.
+Use the Direct path for fast factual Q&A and text-only sketch generation. Use the Agentic path (CLI or TUI Agentic mode) whenever you need to compile, flash, or call any hardware tool. The TUI is the best environment for iterative testing — the server is already warm when you open Chat.
 
 ---
 
@@ -145,41 +145,43 @@ See [`docs/QClaw/mcu-communication-whitepaper.md`](docs/QClaw/mcu-communication-
 ┌────────────────────────────────────────────────────────────────────┐
 │                       QClaw (this repo)                            │
 │                                                                    │
-│  Agentic path                                                      │
+│  Agentic path (make qclaw-agentic)                                 │
 │  ┌──────────────────────────────────────────────────────┐         │
 │  │ qclaw agent / gateway (Go)                            │        │
 │  │   ├── channels/  (Telegram, terminal, IRC, Matrix, …) │        │
 │  │   ├── pre-router (skill_preload.go, 23 rules)         │        │
 │  │   ├── agent loop (multi-iter, tool dispatch)          │        │
 │  │   └── tools (8):                                      │        │
-│  │       • read_file / write_file / list_dir             │        │
 │  │       • arduino   → arduino-cli + OpenOCD@0x8100000   │        │
-│  │       • camera    → gst-launch-1.0 v4l2src ! ...      │        │
-│  │       • sysfs_led → /sys/class/leds/*/brightness      │        │
-│  │       • network   → /proc/net/route + interfaces      │        │
-│  │       • i2cdetect → /dev/i2c-* + i2cdetect -y -r      │        │
+│  │       • camera / sysfs_led / network / i2cdetect      │        │
+│  │       • read_file / write_file / list_dir             │        │
 │  └──────────────────────────────────────────────────────┘         │
 │                                                                    │
-│  Direct path                                                       │
+│  Direct path (make qclaw-direct)                                   │
 │  ┌──────────────────────────────────────────────────────┐         │
-│  │ qclaw direct  (native Go — cmd/qclaw/internal/        │        │
-│  │               agent/direct.go)                        │        │
+│  │ qclaw direct  (native Go)                             │        │
 │  │   └── pre-router (23 rules, 15 skills)                │        │
-│  │   └── ProcessDirectSingleTurn() (pkg/agent/loop.go)   │        │
-│  │       single LLM call, no tools, no loop              │        │
+│  │   └── ProcessDirectSingleTurn() — single call, no tools│        │
 │  └──────────────────────────────────────────────────────┘         │
 │                                                                    │
-│                          OpenAI-compat HTTP                        │
+│  TUI Chat (make qclaw-tui)                                         │
+│  ┌──────────────────────────────────────────────────────┐         │
+│  │ qclaw-launcher-tui (full-screen tview TUI)            │        │
+│  │   ├── channel config, gateway management              │        │
+│  │   └── Chat page (Direct / Agentic, streaming)         │        │
+│  │       • server pre-warmed via WarmUp() at TUI launch  │        │
+│  └──────────────────────────────────────────────────────┘         │
+│                                                                    │
+│                          OpenAI-compat HTTP + SSE                  │
 │  pkg/providers/llamaserver ───►  127.0.0.1:8083/v1/chat/...        │
-│     (persistent server,             │                              │
-│      auto-spawned by factory)       ▼                              │
+│     (persistent server, spawned once per process)   │              │
+│                                                      ▼             │
 │                              ┌────────────────────────────┐        │
 │                              │ yzma ⭐  (CPU, ARMv8.0)    │        │
 │                              │ engines/yzma/lib/          │        │
 │                              └────────────────────────────┘        │
 │                                                                    │
-│  Submodule:                                                        │
-│    engines/yzma/ → hybridgroup/yzma (self-contained lib/)          │
+│  Submodule: engines/yzma/ → hybridgroup/yzma (self-contained lib/) │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -192,17 +194,18 @@ Config layout (`config/qclaw.config.json` and runtime `~/.qclaw/config.json`):
 ```jsonc
 "model_list": [
   {
-    "model_name":    "yzma",
-    "model":         "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-    "api_base":      "yzma/lib/llama-server",
+    "model_name":      "yzma",
+    "model":           "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+    "api_base":        "engines/yzma/lib/llama-server",   // relative to repo root
+    "api_key":         "local",
     "request_timeout": 1200,
     "extra_body": {
       "models_dir": "~/models",
       "threads":    4,
       "ctx_size":   8192,
-      "parallel":   1,
+      "parallel":   1,                                    // pin to 1 — keep full ctx per request
       "port":       8083,
-      "lib_path":   "yzma/lib",
+      "lib_path":   "engines/yzma/lib",                   // → LD_LIBRARY_PATH prepend
       "extra_args": [
         "--flash-attn", "on", "--mlock",
         "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
@@ -315,6 +318,7 @@ QClaw's skills framework, pre-router, and arduino tool are forward-compatible �
 | `make qclaw` | Default — alias for `make qclaw-agentic` |
 | `make qclaw-agentic` | Agentic path: agent loop + 23-rule pre-router + 8 tools |
 | `make qclaw-direct` | Direct path: pre-router + single LLM call, no tools |
+| `make qclaw-tui` | **TUI launcher**: channel config + in-app Chat with server pre-warm |
 | `make qclaw-install` | Full first-time setup (build + workspace + arduino-cli + wizard) |
 | `make qclaw-onboard` | Re-run setup wizard (Telegram token, allow list) |
 | `make qclaw-setup` | Reinstall system prompt + skills tree after a git pull |
@@ -329,7 +333,12 @@ QClaw's skills framework, pre-router, and arduino tool are forward-compatible �
 
 ```
 Uno-QClaw/  (branch: QClaw-v2)
-├── cmd/qclaw/             # CLI entry point (Cobra)
+├── cmd/
+│   ├── qclaw/                    # CLI entry point (Cobra) — agentic gateway + direct subcommand
+│   └── qclaw-launcher-tui/       # Full-screen TUI (make qclaw-tui)
+│       └── internal/ui/
+│           ├── app.go            #   appState, triggerPrewarm(), openChat()
+│           └── chat.go           #   chatPage — Direct/Agentic modes, preWarm(), streaming
 ├── pkg/
 │   ├── agent/                  # Agent loop, context, pre-router, tool dispatch
 │   ├── channels/               # Telegram, terminal, IRC, Matrix, ...
@@ -365,13 +374,14 @@ Uno-QClaw/  (branch: QClaw-v2)
 
 | Document | Description |
 |---|---|
-| `docs/QClaw/development/setup-walkthrough.md` | Step-by-step from a fresh Uno Q to a running QClaw |
-| `docs/QClaw/development/architecture-study-bible.md` | Dual-processor architecture, pin tables, voltage rules, data paths |
-| `docs/QClaw/development/UnoQ-datasheet.pdf` | Official Arduino Uno Q hardware datasheet |
+| `docs/QClaw/development/setup-walkthrough.md` | Step-by-step from a fresh Uno Q to a running QClaw (all three paths) |
+| `docs/QClaw/development/architecture-study-bible.md` | Dual-processor architecture, pin tables, voltage rules, three data paths |
+| `docs/QClaw/development/tui-chat-design.md` | TUI Chat design: pre-warm lifecycle, Direct/Agentic modes, session keys |
+| `docs/QClaw/development/launch-and-debug.md` | llamaserver provider debugging: pre-flight checks, failure modes, log reading |
 | `docs/QClaw/whitepaper.md` | Architecture and evaluation whitepaper |
 | `docs/QClaw/capability-integration.md` | Skill, reference, and tool integration record |
 | `docs/QClaw/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
-| `docs/GPU/benchmark-results.md` | V1 benchmark methodology and numbers backing the table above |
+| `docs/benchmarks/BENCHMARK_SUMMARY.md` | All benchmark runs with engine comparisons |
 
 ---
 
