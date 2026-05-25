@@ -6,7 +6,7 @@ How QClaw turns a user's natural language question into working Arduino code on 
 - **Agentic** — agent loop + 23-rule pre-router + **8 tools** (`read_file`, `write_file`, `list_dir`, `arduino`, `camera`, `sysfs_led`, `network`, `i2cdetect`). End-to-end compile/flash, camera capture, MPU LED control, network diagnostics, I²C bus scan. `make qclaw-agentic` / `make qclaw`.
 - **Direct** — same 23-rule pre-router + single LLM call, no tools, no loop. Faster Q&A across all 15 skills; cannot perform hardware actions. `make qclaw-direct` / `qclaw direct` (native Go: `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, `cmd/qclaw/internal/agent/direct.go`).
 
-**Engine selection is config-only.** Four llama-server binaries are wired into `model_list[]` and selected by `--model <name>` or `agents.defaults.model_name`: `yzma` ⭐ (fastest, b9127, self-contained at `yzma/lib/`), `assix-mpu` (static 16 MB, OpenCL→CPU fallback), `surgical` (ggml-org, crashes on FD702), `assix-adreno` (Adreno-tuned, rusticl-incompatible). See **Part 7** for the full provider/config reference and **Part 3** for the data-path walkthrough.
+**Engine selection is config-only.** The default engine is `yzma` ⭐ (b9127, self-contained at `engines/yzma/lib/`), selected via `agents.defaults.model_name` or `--model yzma`. Additional engines can be added by dropping a `llama-server` binary and a `model_list` entry — no Go rebuild. See **Part 7** for the full provider/config reference and **Part 3** for the data-path walkthrough.
 
 The 15 skills are organized into three domains:
 - **Sketch-side** (MCU): `sketch-patterns`, `led-matrix`, `uno-q-hardware`
@@ -39,7 +39,7 @@ The Arduino Uno Q is not a single computer. It is two computers on one board tha
 │  │  ► AI inference      │                   │► Sketches│  │
 │  │  ► OpenCV / web      │                   │► GPIO    │  │
 │  │  ► llama-server      │                   │► PWM/ADC │  │
-│  │     (yzma / assix)   │                   │          │  │
+│  │     (yzma b9127)     │                   │          │  │
 │  └──────────────────────┘                   └──────────┘  │
 │                                                             │
 │  1.8 V I/O domain (MPU)        3.3 V I/O domain (MCU)      │
@@ -230,9 +230,7 @@ The pre-installed `/usr/local/bin/arduino-flash` wrapper hardcodes `0x80F0000` a
 
 QClaw-v2 has two execution paths. They share the same llama-server engine, model, system prompt, and skills tree — they differ only in what surrounds the LLM call.
 
-> **Implementation note (QClaw-v2).** Both paths use `pkg/providers/llamaserver`, a Go driver that **spawns one `llama-server` child process** per configured engine (`yzma`, `assix-mpu`, etc.) and **keeps it up across requests**, proxying chat completions through 127.0.0.1 over the OpenAI-compatible `/v1/chat/completions` endpoint. The server is health-checked on `/health` before the first call. Only the first call to a given engine pays the cold model-load cost; follow-up calls within the same QClaw process skip mmap, kernel allocation, and warmup entirely.
->
-> This replaces the older `qclaw-llmaCLI-v3` track, which used `pkg/providers/llamacli` to `fork+exec` `engines/llamacli/mpu/llama-cli` once per `Chat()`. That driver is retained for compatibility but is no longer the default. The direct path remains a native Go feature (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`) — it is not the retired Python REPL (`qclaw-direct-chat.py`).
+> **Implementation note (QClaw-v2).** Both paths use `pkg/providers/llamaserver`, a Go driver that **spawns one `llama-server` child process** (`engines/yzma/lib/llama-server`) and **keeps it up across requests**, proxying chat completions through 127.0.0.1 over the OpenAI-compatible `/v1/chat/completions` endpoint. The server is health-checked on `/health` before the first call. Only the first call pays the cold model-load cost; follow-up calls within the same QClaw process skip mmap, kernel allocation, and warmup entirely. The direct path is a native Go feature (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`) — it is not the retired Python REPL (`qclaw-direct-chat.py`).
 
 ### Path A — Agentic (`make qclaw-agentic`)
 
@@ -292,7 +290,7 @@ HTTP POST 127.0.0.1:<port>/v1/chat/completions
     │ tool_calls deltas are accumulated indexed by their slot and emitted
     │ as one unit at end-of-stream.
     ▼
-llama-server child (yzma/lib/llama-server, engines/llamacli/mpu/llama-server, etc.)
+llama-server child (engines/yzma/lib/llama-server)
     │ Model: Qwen_Qwen3.5-0.8B-Q4_0 (~490 MB; mmap once at first /health)
     │ /no_think active in SOUL.md + --reasoning off → no reasoning preamble
     │ KV cache lives in the server's RSS across requests (~1.1 GB peak).
@@ -360,17 +358,14 @@ The direct path **cannot** compile, upload, or call any tool — sketches come b
 
 ### End-to-End Timing Budget
 
-**QClaw-v2 `llamaserver` track — pwm_pins prompt, cold (Run 6 + Run 7):**
+**QClaw-v2 `llamaserver` track — pwm_pins prompt, cold (Run 7):**
 
 | Engine | Wall (cold) | Response | Backend |
 |---|---|---|---|
-| `yzma` ⭐ baseline | **11m49.6s** | ✅ 241 chars | RPC + CPU armv8 (b9127) |
-| `yzma` + study-bible flags | 12m43.2s | ✅ 146 chars | RPC + CPU armv8 |
-| `assix-mpu` | 17m54s | ✅ 427 chars | OpenCL→CPU fallback (drops FD702 at init) |
-| `surgical` | crash @ 57s | ❌ | OpenCL `GGML_ASSERT(0)` mid-decode |
-| `assix-adreno` | hung (killed) | ❌ | OpenCL `sub_group_reduce_add` undeclared on rusticl |
+| `yzma` ⭐ baseline | **11m49.6s** | ✅ 241 chars | CPU ARMv8.0 (b9127) |
+| `yzma` + study-bible flags | 12m43.2s | ✅ 146 chars | CPU ARMv8.0 |
 
-Yzma is the **fastest engine** tested — 6m04s (~34%) faster than `assix-mpu` on the same prompt, model, and 4× Cortex-A53. On the persistent-server architecture, all of that wall time is paid on the **first** call to a given engine; follow-up turns within the same QClaw process skip the cold model-load entirely (only prefill of the new turn + decode). Full per-run write-ups: `docs/benchmarks/run6/`, `docs/benchmarks/run7/`, `docs/benchmarks/BENCHMARK_SUMMARY.md`.
+On the persistent-server architecture, all cold wall time is paid on the **first** call; follow-up turns within the same QClaw process skip the model-load entirely (only prefill of the new turn + decode). Full per-run write-ups: `docs/benchmarks/run7/`, `docs/benchmarks/BENCHMARK_SUMMARY.md`.
 
 **Legacy `qclaw-llmaCLI-v3` track (subprocess per `Chat()`, kept here as a reference):**
 
@@ -686,7 +681,7 @@ The QClaw-v2 inference path is `pkg/providers/llamaserver`. It owns the lifecycl
 | `WithContextSize(int)` | 4096 | `-c` flag — KV cache budget in tokens |
 | `WithParallel(int)` | **1** | `-np` flag — KV slots. Pinned to 1 so the full ctx belongs to the single in-flight request (auto picks ≥2 on b9127+ and divides ctx per slot, causing surprise HTTP 500 `"Context size has been exceeded"` errors) |
 | `WithPort(int)` | 8080 | Loopback listener port — must be unique per engine entry to allow simultaneous engines |
-| `WithLibraryPath(string)` | `""` | Prepended to `LD_LIBRARY_PATH` when spawning the server. Required for dynamically-linked builds (yzma, surgical, assix-adreno) whose `.so` files live next to the binary instead of a system path |
+| `WithLibraryPath(string)` | `""` | Prepended to `LD_LIBRARY_PATH` when spawning the server. Required for dynamically-linked builds (yzma) whose `.so` files live next to the binary instead of a system path |
 | `WithExtraArgs([]string)` | `[]` | Verbatim string slice appended to the spawn command. The per-engine tuning escape hatch — any new llama-server flag can be added without a Go change |
 | `WithTimeout(time.Duration)` | 20 min | Cold-prefill budget on the underlying HTTP client. Set via `request_timeout` (seconds) in the model_list entry |
 
@@ -705,9 +700,6 @@ The QClaw-v2 inference path is `pkg/providers/llamaserver`. It owns the lifecycl
     }
   },
   "model_list": [
-    { "model_name": "assix-mpu",    /* ... */ },
-    { "model_name": "surgical",     /* ... */ },
-    { "model_name": "assix-adreno", /* ... */ },
     { "model_name": "yzma",         /* see below */ }
   ]
 }
@@ -719,7 +711,7 @@ The QClaw-v2 inference path is `pkg/providers/llamaserver`. It owns the lifecycl
 {
   "model_name":       "yzma",
   "model":            "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-  "api_base":         "yzma/lib/llama-server",        // binary path (relative resolves from CWD = repo root)
+  "api_base":         "engines/yzma/lib/llama-server", // binary path (relative resolves from CWD = repo root)
   "api_key":          "local",
   "request_timeout":  1200,                            // → WithTimeout (seconds)
   "extra_body": {
@@ -773,10 +765,7 @@ Then any `extra_args` from config are appended.
 
 | Engine | `api_base` | `lib_path` | Port | Backend | Status |
 |---|---|---|---|---|---|
-| `assix-mpu` | `engines/llamacli/mpu/llama-server` | (none — static) | 8080 | OpenCL→CPU | ✅ Reliable; drops FD702 at init |
-| `surgical` | `llama.cpp/build/bin/llama-server` | `llama.cpp/build/bin` | 8081 | OpenCL (ggml-org) | ❌ `GGML_ASSERT(0)` mid-decode on FD702 |
-| `assix-adreno` | `engines/llamacli/llama.cpp/build-adreno/bin/llama-server` | `…/build-adreno/bin` | 8082 | OpenCL (Adreno kernels) | ❌ `sub_group_reduce_add` undeclared on rusticl |
-| `yzma` ⭐ | `yzma/lib/llama-server` | `yzma/lib` | 8083 | RPC + CPU armv8 | ✅ Fastest tested |
+| `yzma` ⭐ | `engines/yzma/lib/llama-server` | `engines/yzma/lib` | 8083 | CPU ARMv8.0 | ✅ Default; fastest tested |
 
 Distinct ports allow running multiple engines simultaneously (e.g. for an A/B benchmark). To switch the default, change `agents.defaults.model_name`. To use a non-default engine for a single call: `qclaw direct --model <name> -m "..."`.
 
@@ -976,7 +965,6 @@ QClaw/
 │   ├── providers/               # LLM provider adapters
 │   │   ├── llamaserver/         # ⭐ QClaw-v2: persistent on-device llama-server provider
 │   │   │   └── provider.go       #   WithLibraryPath, WithParallel, WithExtraArgs, …
-│   │   ├── llamacli/             # Legacy: subprocess driver for engines/llamacli/mpu/llama-cli (qclaw-llmaCLI-v3)
 │   │   ├── openai_compat/        # HTTP client used by llamaserver + cloud providers
 │   │   └── factory_provider.go   # Wires model_list[] → provider instances
 │   ├── skills/                  # Skill discovery and loading (BuildSkillsSummary)
@@ -1049,19 +1037,11 @@ QClaw/
 │   ├── qclaw-launch-direct.sh  # Direct path launcher (pre-router + REPL)
 │   ├── qclaw-direct-chat.py    # Legacy direct-path Python REPL (POSTs to a long-lived llama-server)
 │   ├── qclaw-onboard.sh        # Interactive setup wizard
-│   ├── bench-llamacli-provider.sh    # Legacy llama-cli bench
 │   ├── bench-llamaserver-provider.sh # QClaw-v2 llama-server bench
 │   └── arduino-cli-setup.sh     # Installs arduino-cli + arduino:zephyr core
 ├── engines/                     # On-device inference engines
-│   └── llamacli/                # Submodule → assix/Arduino-UnoQ-Optimized-Llama-CLI
-│       ├── mpu/llama-server     #   ⭐ used by `assix-mpu` engine entry (16 MB, static)
-│       ├── mpu/llama-cli        #   precompiled CLI ELF (legacy llamacli track)
-│       ├── llama.cpp/           #   source tree; build-adreno/ is the `assix-adreno` engine
-│       ├── mcu/                 #   STM32 bridge sketch (unused by QClaw)
-│       └── README.md            #   assix-side docs
-├── yzma/                        # Submodule → hybridgroup/yzma (b9127, fastest engine)
-│   └── lib/                     #   ⭐ self-contained: llama-server + 25 .so files
-├── llama.cpp/                   # Source tree for the `surgical` engine (build/bin/llama-server)
+│   └── yzma/                    # Submodule → hybridgroup/yzma (b9127)
+│       └── lib/                 #   ⭐ self-contained: llama-server + .so files (ARMv8.0, no build)
 ├── docs/QClaw/                 # Guides, whitepapers, evaluation artifacts
 │   ├── operator-guide.md
 │   ├── user-guide.md
