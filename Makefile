@@ -14,8 +14,9 @@ GO_VERSION=$(shell $(GO) version | awk '{print $$3}')
 CONFIG_PKG=github.com/laurenvil/Uno-QClaw/pkg/config
 LDFLAGS=-ldflags "-X $(CONFIG_PKG).Version=$(VERSION) -X $(CONFIG_PKG).GitCommit=$(GIT_COMMIT) -X $(CONFIG_PKG).BuildTime=$(BUILD_TIME) -X $(CONFIG_PKG).GoVersion=$(GO_VERSION) -s -w"
 
-# Go variables
-GO?=CGO_ENABLED=0 go
+# Go variables — prefer the local install over the system go when available
+GO_LOCAL=/home/arduino/go-installs/go/bin/go
+GO?=CGO_ENABLED=0 $(shell test -x $(GO_LOCAL) && echo $(GO_LOCAL) || echo go)
 GOFLAGS?=-v -tags stdjson
 
 # Patch MIPS LE ELF e_flags (offset 36) for NaN2008-only kernels (e.g. Ingenic X2600).
