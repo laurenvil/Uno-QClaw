@@ -2,12 +2,21 @@
 
 Step-by-step guide to run QClaw on an Arduino Uno Q — from a fresh board to a working AI assistant that writes, compiles, and uploads Arduino sketches.
 
-v3 ships **two execution paths**, both backed by the in-tree `pkg/providers/llamacli` which spawns the precompiled `engines/llamacli/mpu/llama-cli` (assix) as a subprocess per `Chat()`:
+**Current branch: `QClaw-v2`** — uses the **persistent multi-engine `pkg/providers/llamaserver`** provider. One llama-server child process stays up across requests; engine selection is config-only (no rebuild). Four engines ship today:
+
+| Engine | Binary | Status |
+|---|---|---|
+| `yzma` ⭐ | `yzma/lib/llama-server` (b9127, 9.0 MB) | Fastest, CPU-only — recommended default |
+| `assix-mpu` | `engines/llamacli/mpu/llama-server` (16 MB static) | Reliable, OpenCL→CPU fallback |
+| `surgical` | `llama.cpp/build/bin/llama-server` (ggml-org) | Crashes on FD702 decode (Mesa rusticl OpenCL incompatibility) |
+| `assix-adreno` | `engines/llamacli/llama.cpp/build-adreno/bin/llama-server` | Kernel compile fails on rusticl |
+
+Two execution paths share the same model, system prompt, and 15-skill tree:
 
 - **Agentic** (`make qclaw-agentic` / `make qclaw`) — full agent loop + 8 tools (read/write/list/arduino/camera/sysfs_led/network/i2cdetect); can compile and flash sketches end-to-end.
-- **Direct** (`make qclaw-direct` / `qclaw direct`) — native Go implementation (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`). Same 23-rule pre-router + 15-skill tree, single LLM call, no tools, no loop. Fast Q&A across all 15 skills; cannot compile or flash sketches.
+- **Direct** (`make qclaw-direct` / `qclaw direct`) — native Go implementation (`ProcessDirectSingleTurn` in `pkg/agent/loop.go`). Same 23-rule pre-router + 15-skill tree, single LLM call, no tools, no loop. Fast Q&A across all 15 skills.
 
-See `docs/QClaw/whitepaper.md` and `docs/GPU/llama-cli-provider-whitepaper.md` for the design rationale.
+See `docs/QClaw/v2/multi-engine-llamaserver-plan.md` for the multi-engine design rationale and `docs/QClaw/whitepaper.md` for the higher-level architecture context.
 
 ---
 
@@ -28,42 +37,46 @@ See `docs/QClaw/whitepaper.md` and `docs/GPU/llama-cli-provider-whitepaper.md` f
 ## Step 1: Clone and Initialize
 
 ```bash
-git clone https://github.com/laurenvil/Uno-QClaw.git ~/ArduinoApps/QClaw
+git clone --recursive https://github.com/laurenvil/Uno-QClaw.git ~/ArduinoApps/QClaw
 cd ~/ArduinoApps/QClaw
-git checkout qclaw
+git checkout QClaw-v2
 git submodule update --init --recursive
 ```
 
+`--recursive` pulls both submodules:
+- `engines/llamacli` → `assix/Arduino-UnoQ-Optimized-Llama-CLI` (ships `mpu/llama-server` + `mpu/llama-cli`)
+- `yzma` → `hybridgroup/yzma` (ships `lib/llama-server` + `.so` libs — fastest engine)
+
 ---
 
-## Step 2: Verify the Inference Engine Submodule
+## Step 2: Verify the Inference Engines
 
-The precompiled `llama-cli` ships **inside the repo** as a git submodule
-(`engines/llamacli`, pulling assix's
-[`Arduino-UnoQ-Optimized-Llama-CLI`](https://github.com/assix/Arduino-UnoQ-Optimized-Llama-CLI)
-snapshot). After Step 1's `git submodule update --init --recursive`, the
-binary is already on disk at `engines/llamacli/mpu/llama-cli`.
+After Step 1, the assix engine binary is at `engines/llamacli/mpu/llama-server` and the yzma binary is at `yzma/lib/llama-server`.
 
 ```bash
-ls -la engines/llamacli/mpu/llama-cli
-# ⇒ -rwxr-xr-x ... 12M ... engines/llamacli/mpu/llama-cli
+# assix-mpu (static, OpenCL→CPU fallback)
+ls -la engines/llamacli/mpu/llama-server
+./engines/llamacli/mpu/llama-server --version 2>&1 | head -2
 
-./engines/llamacli/mpu/llama-cli --version 2>&1 | head -2
-# ⇒ version: 9099 (5d5d2e15d)
-# ⇒ built with GNU 13.3.0 for Linux aarch64
+# yzma (dynamic — needs LD_LIBRARY_PATH for its .so files)
+ls -la yzma/lib/llama-server
+LD_LIBRARY_PATH=yzma/lib ./yzma/lib/llama-server --version 2>&1 | head -4
+# ⇒ load_backend: loaded RPC backend from .../libggml-rpc.so
+# ⇒ load_backend: loaded CPU backend from .../libggml-cpu-armv8.0_1.so
+# ⇒ version: 9127 (a9883db8e)
+# ⇒ built with GNU 14.2.0 for Linux aarch64
 ```
 
-If the binary is missing (clone without `--recursive`, or shallow checkout),
-fetch it explicitly:
+If `yzma/lib/llama-server` is missing (e.g., the submodule was bumped to a new tag), refresh the libs:
 
 ```bash
-git submodule update --init --recursive engines/llamacli
+cd yzma
+make download-llama.cpp                  # latest llama.cpp release
+make download-llama.cpp VERSION=b9127    # pin a specific build
+cd ..
 ```
 
-There is no `make download-llama.cpp` step any more — there is no
-`llama-server` to start, no shared libraries to link, no FFI handshake.
-The Go provider in `pkg/providers/llamacli` `fork+exec`s this single ELF
-file per inference call.
+The QClaw runtime resolves `api_base` and `lib_path` **relative to the repo root** (CWD when you run `qclaw`), so both engines work out of the box from a fresh clone — no environment variables, no symlinks.
 
 ---
 
@@ -90,7 +103,7 @@ make qclaw-install
 This single command:
 1. Builds the QClaw binary (`build/qclaw`)
 2. Installs the system prompt (`SOUL.md`), identity files, and the **15-skill tree** (`sketch-patterns/`, `led-matrix/`, `uno-q-hardware/`, `bridge/`, `wireless/`, `vision/`, `audio/`, `arduino-app-lab/`, `modulino/`, `linux-led/`, plus general skills) to `~/.qclaw/workspace/`
-3. Copies `config/qclaw.config.json` to `~/.qclaw/config.json` (first run only). The v3 config exposes **8 narrow tools**: `read_file`, `write_file`, `list_dir`, `arduino` (compile/flash), `camera` (V4L2 still capture), `sysfs_led` (MPU-side RGB LEDs), `network` (read-only IP/gateway/interfaces), `i2cdetect` (Linux I²C bus scan). General `exec`, `message`, `edit_file`, generic `i2c`/`spi` remain disabled — every new tool is narrowly scoped and validates inputs against allow-lists. Total schema overhead: ~3,400 chars.
+3. Copies `config/qclaw.config.json` to `~/.qclaw/config.json` (first run only). The QClaw-v2 config exposes a **4-engine `model_list`** (see Step 4a below) and **8 narrow tools**: `read_file`, `write_file`, `list_dir`, `arduino` (compile/flash), `camera` (V4L2 still capture), `sysfs_led` (MPU-side RGB LEDs), `network` (read-only IP/gateway/interfaces), `i2cdetect` (Linux I²C bus scan). General `exec`, `message`, `edit_file`, generic `i2c`/`spi` remain disabled — every new tool is narrowly scoped and validates inputs against allow-lists. Total schema overhead: ~3,400 chars.
 4. Downloads and installs `arduino-cli` to `~/.local/bin/` if not present
 5. Installs the `arduino:zephyr` board core for the Uno Q
 6. Runs the interactive setup wizard:
@@ -119,15 +132,103 @@ make qclaw-setup
 
 ---
 
+## Step 4a: Engine Selection & Server Flags
+
+QClaw-v2's `pkg/providers/llamaserver` provider spawns one llama-server child process per engine entry and keeps it alive between requests. The default engine is whatever `agents.defaults.model_name` points at in `~/.qclaw/config.json`. To switch engines for a single call, pass `--model <engine_name>`:
+
+```bash
+qclaw direct --model yzma         -m "Which pins do PWM?"   # fastest (recommended)
+qclaw direct --model assix-mpu    -m "Which pins do PWM?"   # static 16 MB, OpenCL→CPU
+qclaw direct --model surgical     -m "Which pins do PWM?"   # ggml-org modern (crashes on FD702)
+qclaw direct --model assix-adreno -m "Which pins do PWM?"   # Adreno-tuned (kernel error on rusticl)
+```
+
+### Anatomy of a `model_list` entry
+
+Each engine is one object in `model_list[]`. The yzma entry is the canonical example:
+
+```jsonc
+{
+  "model_name":       "yzma",
+  "model":            "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+  "api_base":         "yzma/lib/llama-server",        // path to the binary (relative resolves from repo root)
+  "api_key":          "local",
+  "request_timeout":  1200,                            // seconds — cold-prefill budget
+  "extra_body": {
+    "models_dir":  "~/models",                         // → WithModelsDir   (model lookup root)
+    "threads":     4,                                  // → WithThreads     (-t)
+    "ctx_size":    8192,                               // → WithContextSize (-c)
+    "parallel":    1,                                  // → WithParallel    (-np) — pin to 1!
+    "port":        8083,                               // → WithPort        loopback
+    "lib_path":    "yzma/lib",                         // → WithLibraryPath (LD_LIBRARY_PATH prepend)
+    "extra_args": [                                    // → WithExtraArgs   (verbatim flags)
+      "--flash-attn", "on",
+      "--mlock",
+      "--cache-type-k", "q8_0",
+      "--cache-type-v", "q8_0",
+      "--reasoning-budget", "800"
+    ]
+  }
+}
+```
+
+### Server flags the provider always pins
+
+These are not configurable — `pkg/providers/llamaserver/provider.go` injects them on every spawn:
+
+```
+-m <modelPath>  --host 127.0.0.1  --port <port>
+-t <threads>    -c <ctxSize>      -np <parallel>
+--reasoning off  --jinja  --log-disable
+```
+
+Then any `extra_args` from config are appended verbatim. The full spawn command for `qclaw direct --model yzma` with the recommended `extra_args`:
+
+```
+yzma/lib/llama-server \
+  -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
+  --host 127.0.0.1 --port 8083 \
+  -t 4 -c 8192 -np 1 \
+  --reasoning off --jinja --log-disable \
+  --flash-attn on --mlock \
+  --cache-type-k q8_0 --cache-type-v q8_0 \
+  --reasoning-budget 800
+```
+
+### Why `parallel: 1` matters
+
+llama-server's `--parallel` defaults to `-1 = auto`, which on build b9127+ allocates **≥2 KV slots** and divides `ctx_size` across them. With `ctx_size=8192` and auto-slot ≥4, each request only sees ~2048 tokens of context — not enough for the QClaw system prompt (SOUL.md + IDENTITY.md + pre-router skills ≈ 1500 tokens) plus a meaningful generation budget. Pinning `parallel: 1` keeps the full ctx for the single in-flight request. This is also the provider's default (`WithParallel(1)`) so older configs without an explicit `parallel` key still work.
+
+### Study-bible `extra_args` flags (with caveat)
+
+Five flags from `docs/QClaw/development/architecture-study-bible.md` are wired up by default in the yzma entry:
+
+| Flag | Theoretical effect |
+|---|---|
+| `--flash-attn on` | ~10% speedup via fused QK·softmax·V kernel; lower KV memory pressure |
+| `--mlock` | Pin model weights in RAM (no swap, no eviction under memory pressure) |
+| `--cache-type-k q8_0` / `-v q8_0` | Quantize KV cache to int8 — ~halves KV RAM vs fp16 |
+| `--reasoning-budget 800` | Cap `<think>` tokens (belt-and-braces with `/no_think` in SOUL.md) |
+
+**Caveat:** Run 7 measured these flags as a **53 s cold regression** on yzma (12m43.2s vs 11m49.6s baseline). `--mlock` pays the full model-pin cost up front rather than mmap-on-access, and `--flash-attn on` lacks an ARMv8.0 fast-path that beats the scalar code. They are better candidates for a warm steady-state on a long-lived gateway. To disable them, remove the `extra_args` array from the yzma entry. See [`docs/benchmarks/run7/yzma-optimized-benchmark.md`](../../benchmarks/run7/yzma-optimized-benchmark.md).
+
+### Adding a new engine
+
+No Go changes needed for a new llama-server build — add a `model_list` entry with the binary path, port, and any required `lib_path`/`extra_args`, then commit the config update. Switching engines is a one-line change to `agents.defaults.model_name`. See `docs/QClaw/v2/multi-engine-llamaserver-plan.md` for the original plan and `pkg/providers/factory_provider.go` for the `llama-server`/`llamaserver` factory case.
+
+---
+
 ## Step 5: Launch
 
-`make qclaw-agentic` brings up the Telegram gateway (if configured) and the
-agent terminal. There is no long-lived inference server to wait on — the
-first `Chat()` call spawns `engines/llamacli/mpu/llama-cli` as a subprocess
-(cold-load ~12 s for the 0.8B Q4_0 model), waits for its GBNF-constrained
-stdout envelope, and reaps the child. The next call repeats the spawn but
-benefits from the GGUF being in the page cache (warm-load ~3 s overhead
-before the first prefill token).
+`make qclaw-agentic` brings up the Telegram gateway (if configured) and the agent terminal. The **first** `Chat()` call to a given engine spawns its `llama-server` child process (cold-load: ~3–5 min for the 0.8B Q4_0 model on yzma, longer on the static assix-mpu binary). The process stays up across subsequent requests — follow-up turns within the same gateway lifetime skip the cold-load cost entirely. The server is killed when the QClaw process exits.
+
+Sessions persist across QClaw restarts via `~/.qclaw/workspace/sessions/`. To force a clean cold start for a controlled benchmark:
+
+```bash
+pkill -f llama-server                              # kill any persistent server
+rm -f ~/.qclaw/workspace/sessions/*                # drop session history
+rm -f ~/.qclaw/llama-server.pid ~/.qclaw/llama-server.log
+```
 
 ### Path A — Agentic (default, supported)
 
@@ -223,19 +324,18 @@ To verify the flash actually worked, watch the board's LED matrix or measure the
 
 ## Auto-start on Boot (Optional)
 
-There is **no inference daemon to enable** — inference is in-process: each `Chat()` is a one-shot subprocess of `engines/llamacli/mpu/llama-cli`. What you can autostart is the QClaw *gateway* (which receives Telegram/IRC/Matrix/etc. messages and feeds the agent loop):
+On QClaw-v2 the gateway owns the persistent llama-server process — when systemd starts `qclaw gateway`, the configured engine is spawned on first inbound message and stays up until the gateway exits. There is no separate inference daemon to enable.
 
 ```ini
 # /etc/systemd/system/qclaw-gateway.service
 [Unit]
-Description=QClaw gateway + agent loop
+Description=QClaw gateway + agent loop (manages persistent llama-server)
 After=network-online.target
 
 [Service]
 WorkingDirectory=/home/arduino/ArduinoApps/QClaw
 ExecStart=/home/arduino/ArduinoApps/QClaw/build/qclaw gateway
-Environment=QCLAW_MODEL=/home/arduino/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf
-Environment=LLAMA_CLI=/home/arduino/ArduinoApps/QClaw/engines/llamacli/mpu/llama-cli
+ExecStopPost=/usr/bin/pkill -f llama-server
 Restart=on-failure
 User=arduino
 
@@ -247,12 +347,9 @@ WantedBy=multi-user.target
 sudo systemctl enable --now qclaw-gateway
 ```
 
-The first inbound message pays the ~12 s cold-load cost as the kernel
-mmap's the GGUF; subsequent messages within the same boot are
-warm-cache (~3 s overhead before the first prefill token). To **warm the
-page cache at boot** without spinning up the agent, drop a short oneshot
-service that runs `cat ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf > /dev/null`
-before `qclaw-gateway` starts.
+The first inbound message pays the cold model-load cost (3–18 min depending on engine, including prefill of the ~16K-char system prompt); follow-up messages skip that entirely because the llama-server child stays resident. To **warm the page cache at boot** before the first inbound message, drop a short oneshot service that runs `cat ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf > /dev/null` before `qclaw-gateway` starts.
+
+The `ExecStopPost` is important: if the gateway crashes or is restarted, the orphaned llama-server child will keep the port bound and block the next gateway start. Stale-server cleanup details: see `docs/benchmarks/run7/yzma-optimized-benchmark.md`.
 
 ---
 
@@ -260,18 +357,32 @@ before `qclaw-gateway` starts.
 
 **"Asking QClaw..." appears on Telegram but no response arrives**
 
-1. Confirm the binary is executable: `ls -la engines/llamacli/mpu/llama-cli` — must be `-rwxr-xr-x`. If the submodule was checked out with the wrong perms, `chmod +x` it.
+1. Confirm the engine binary is executable. For yzma: `ls -la yzma/lib/llama-server` must be `-rwxr-xr-x`. For assix: `ls -la engines/llamacli/mpu/llama-server`.
 2. Confirm the model is present: `ls -la ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf`.
-3. Manually invoke the binary to surface its stderr: `./engines/llamacli/mpu/llama-cli -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf -p "hi" -n 8 -st 2>&1 | head -40` — this should produce ~8 tokens of output. If it segfaults, prints `Unsupported GPU`, or hangs, the GGUF or binary is the problem (not the agent loop).
-4. Run the agent with debug logging: `./build/qclaw gateway --debug` — every `Chat()` logs the full subprocess argv plus exit code and stderr tail.
-5. Confirm `request_timeout` in `~/.qclaw/config.json` is `1200` — the default 30 s times out during cold model load. Cold spawns take ~12 s; warm spawns ~3 s + decode.
-6. End-to-end smoke test: `bash scripts/bench-llamacli-provider.sh` (Phase A.2 should print `[ Prompt: 10.6 t/s | Generation: 8.8 t/s ]` in ~10 s — if it doesn't, the regression is in the provider, not your agent setup).
+3. Manually start the configured engine to surface its stderr:
+   ```bash
+   LD_LIBRARY_PATH=yzma/lib yzma/lib/llama-server \
+     -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
+     --host 127.0.0.1 --port 8083 -t 4 -c 8192 -np 1 \
+     --reasoning off --jinja
+   # In another shell:
+   curl -s http://127.0.0.1:8083/health    # expect {"status":"ok"}
+   ```
+   If the server segfaults, prints `Unsupported GPU`, or never reaches `HTTP server listening`, the binary or GGUF is the problem (not the agent loop).
+4. Check the port isn't already taken: `ss -tlnp | grep -E "808[0-3]"` — the provider does not coexist with another process on the same port. Kill stale servers: `pkill -f llama-server`.
+5. Run the agent with debug logging: `./build/qclaw gateway --debug` — every spawn logs the full argv, port, and lib_path.
+6. Confirm `request_timeout` in `~/.qclaw/config.json` is `1200` — the default 30 s times out during cold model load. Cold spawns take 3–18 min depending on engine; warm follow-ups are seconds.
 
-**Responses are very slow (> 60 seconds)**
+**Responses are very slow (> 60 seconds on a follow-up turn — not the cold start)**
 
-- Confirm `/no_think` is the first line of `~/.qclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120 s
-- Check RAM: `free -h` — each `llama-cli` subprocess peaks at ~1.1 GB RSS. If two `Chat()`s overlap and the board is also serving Telegram, you can swap (Uno Q has 1.8 GiB swap by default but I/O on swapped weights is brutally slow).
-- Check that page cache has the model: `vmtouch ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf` (install with `apt install vmtouch`) — if 0 % is resident, the next call will pay the full mmap cost (~10 s on eMMC).
+- Confirm `/no_think` is the first line of `~/.qclaw/workspace/SOUL.md` — without it, Qwen3 generates reasoning tokens before every response, adding 30–120 s. The `--reasoning off` flag (pinned by the provider) is a backup; `/no_think` is the primary suppressor.
+- Confirm `parallel: 1` in the engine's `extra_body`. If it's missing or set to `auto`, the server splits ctx across multiple slots and you'll see `"Context size has been exceeded"` HTTP 500 errors. The provider defaults to `WithParallel(1)`; this is only a problem if you explicitly override it.
+- Check RAM: `free -h` — yzma's llama-server with `--mlock` pins ~490 MB resident. Two engines on different ports don't share KV cache; the second one will compete with the first.
+- Check that page cache has the model: `vmtouch ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf` (install with `apt install vmtouch`) — if 0 % is resident, the next cold call will pay the full mmap cost on eMMC.
+
+**`"Context size has been exceeded"` HTTP 500**
+
+This always means `ctx_size / parallel_slots < (system_prompt + user_message + generation_budget)`. Either set `parallel: 1` in the engine's `extra_body` (provider default) or bump `ctx_size` to `8192 × N` if you really want N slots. The root-cause analysis is in `docs/benchmarks/run7/yzma-optimized-benchmark.md`.
 
 **Sketch compilation fails**
 
@@ -299,26 +410,32 @@ make qclaw         # restart
 
 ## Verifying Performance
 
-Target numbers for `Qwen_Qwen3.5-0.8B-Q4_0` on the `qclaw-llamaCLI` track
-(`engines/llamacli/mpu/llama-cli`, `-c 2048 -t 4 --temp 0.0 --reasoning off`,
-warm cache, `/no_think` active in `SOUL.md`):
+Target numbers for the QClaw-v2 `llamaserver` track on `Qwen_Qwen3.5-0.8B-Q4_0`, `-c 8192 -t 4 -np 1 --reasoning off --jinja`, `/no_think` active in `SOUL.md` (pwm_pins prompt, Run 6 + Run 7):
+
+| Engine | Wall (cold) | Notes |
+|---|---|---|
+| `yzma` ⭐ baseline | **11m49.6s** | Fastest engine; RPC + CPU armv8 |
+| `yzma` + study-bible flags | 12m43.2s | +53 s regression on cold; better on warm |
+| `assix-mpu` | 17m54s | OpenCL→CPU fallback (drops FD702 at init) |
+
+For warm follow-ups within the same QClaw process, the persistent server stays up so subsequent turns skip the cold model load entirely — only prefill (system prompt + new user turn) and decode are paid.
+
+To reproduce the engine comparison end-to-end:
+
+```bash
+# Cold start every time: clear sessions + kill any persistent server first
+pkill -f llama-server
+rm -f ~/.qclaw/workspace/sessions/*
+
+time qclaw direct --model yzma -m "Which pins on the Uno Q can do PWM?"
+```
+
+Legacy reference numbers for the older subprocess-per-`Chat()` `llamacli` track (`engines/llamacli/mpu/llama-cli`, `-c 2048`):
 
 | Metric | Target |
 |---|---|
 | Prompt processing (warm) | ~10.6 tok/s |
 | Generation throughput (warm, n=64) | ~8.8 tok/s |
-| End-to-end `Chat()` walltime (warm, 64-tok decode) | ~10 s |
-| End-to-end `Chat()` walltime (cold mmap + grammar + 1 tok) | ~12 s |
-| Per-`Chat()` `llama-cli` RSS peak | ~1.1 GB |
-| Swap usage during single `Chat()` | 0 |
+| Cold-start `Chat()` (mmap + grammar + 1 tok) | ~12 s |
 
-To reproduce these numbers end-to-end:
-
-```bash
-bash scripts/bench-llamacli-provider.sh
-```
-
-The script measures direct-binary t/s (Phase A), cold-start cost (Phase B),
-and the full Go-provider `Chat()` walltime including subprocess spawn,
-stdout capture, and envelope parse (Phase C). Full V1 benchmark
-methodology and raw logs: [`docs/GPU/benchmark-results.md`](../../GPU/benchmark-results.md).
+To reproduce the legacy numbers: `bash scripts/bench-llamacli-provider.sh`. The full 7-run history is in [`docs/benchmarks/BENCHMARK_SUMMARY.md`](../../benchmarks/BENCHMARK_SUMMARY.md).
