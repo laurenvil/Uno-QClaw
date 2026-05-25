@@ -24,7 +24,15 @@
         "models_dir": "~/models",
         "threads": 4,
         "ctx_size": 12288,
-        "port": 8080
+        "parallel": 1,
+        "port": 8080,
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800"
+        ]
       }
     },
     {
@@ -37,8 +45,16 @@
         "models_dir": "~/models",
         "threads": 4,
         "ctx_size": 12288,
+        "parallel": 1,
         "port": 8081,
-        "lib_path": "/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin"
+        "lib_path": "/home/arduino/ArduinoApps/qclaw/llama.cpp/build/bin",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800"
+        ]
       }
     },
     {

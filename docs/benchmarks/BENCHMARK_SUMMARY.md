@@ -2,7 +2,7 @@
 
 **Hardware:** Arduino Uno Q · Qualcomm QRB2210 · 4× Cortex-A53 · 4 GB LPDDR4X · kernel 6.16.7
 **Model:** `Qwen_Qwen3.5-0.8B-Q4_0.gguf` (490 MB, Q4_0)
-**Runs:** 1–7 · **All CPU-only** (GPU dropped at init, see §GPU Status)
+**Runs:** 1–8 · **All CPU-only** (GPU dropped at init, see §GPU Status)
 
 ---
 
@@ -163,8 +163,29 @@ option (default 1, fixes auto-slot ctx overflow on b9127+) and `extra_args` pass
 on the same prompt and model, both CPU-only. The `--mlock` + `--flash-attn` flags add upfront cost
 on a cold run; warm-path benefit remains unmeasured.
 
+### Run 8 — Four-engine optimized comparison (2026-05-25)
+
+Applied the same five-flag optimization set (`--flash-attn on`, `--mlock`, `--cache-type-k/v q8_0`,
+`--reasoning-budget 800`) to assix-mpu, surgical, and yzma via the `extra_args` passthrough.
+assix-adreno binary doesn't support these flags.
+
+| Engine | Wall | Exit | vs unoptimized |
+|---|---|---|---|
+| **assix-mpu optimized** ⭐ | **12m35.1s** | 0 ✅ | −5m19s vs Run 6 (−30%) |
+| yzma optimized | 12m58.1s | 0 ✅ | +1m09s vs Run 7 baseline (+10%) |
+| surgical optimized | 36s | 1 ❌ | OpenCL crash (same as Run 6) |
+| assix-adreno | 5m00s (timeout) | 124 ⏱ | OpenCL kernel compile hang |
+
+**Headline finding:** The flag set inverts the engine ranking. Yzma was fastest pre-optimization
+(11m49.6s, Run 7). After optimization, **assix-mpu wins** (12m35.1s) by 23 seconds. The older
+assix llama.cpp benefits dramatically from flash-attn + mlock; yzma's newer build (b9127) appears
+to have those gains baked in already, so the flags only add cost.
+
+Full report: [run8/four-engine-optimized-comparison.md](run8/four-engine-optimized-comparison.md).
+
 **Next steps (in priority order):**
-1. Run optimized warm benchmark — mlock cost amortised after first load; flash-attn benefit appears on decode
-2. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
-3. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
-4. Track Mesa rusticl `cl_khr_subgroups` implementation
+1. Re-run pwm_pins on assix-mpu + yzma 2–3× to confirm the inversion isn't single-sample noise
+2. Warm-direct benchmark on yzma — measure prefix-cache hit rate to settle direct-path engine choice
+3. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
+4. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
+5. Track Mesa rusticl `cl_khr_subgroups` implementation
