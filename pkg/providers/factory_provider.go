@@ -13,7 +13,6 @@ import (
 	"github.com/laurenvil/Uno-QClaw/pkg/config"
 	anthropicmessages "github.com/laurenvil/Uno-QClaw/pkg/providers/anthropic_messages"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/azure"
-	"github.com/laurenvil/Uno-QClaw/pkg/providers/llamacli"
 	"github.com/laurenvil/Uno-QClaw/pkg/providers/llamaserver"
 )
 
@@ -194,36 +193,6 @@ func CreateProviderFromConfig(cfg *config.ModelConfig) (LLMProvider, string, err
 			workspace = "."
 		}
 		return NewCodexCliProvider(workspace), modelID, nil
-
-	case "llama-cli", "llamacli":
-		// On-device CLI inference via the assix-bundled llama-cli binary.
-		// cfg.APIBase carries the absolute path to the llama-cli executable
-		// (e.g. /home/arduino/ArduinoApps/qclaw/engines/llamacli/mpu/llama-cli).
-		// modelID is either an absolute model path or a filename under
-		// cfg.ExtraBody["models_dir"] (default: ~/models).
-		binary := cfg.APIBase
-		if binary == "" {
-			return nil, "", fmt.Errorf("api_base is required for llama-cli protocol (set to llama-cli binary path)")
-		}
-		opts := []llamacli.Option{
-			llamacli.WithDefaultModel(modelID),
-		}
-		if v, ok := cfg.ExtraBody["models_dir"].(string); ok && v != "" {
-			opts = append(opts, llamacli.WithModelsDir(v))
-		}
-		if v, ok := cfg.ExtraBody["threads"].(float64); ok {
-			opts = append(opts, llamacli.WithThreads(int(v)))
-		}
-		if v, ok := cfg.ExtraBody["ctx_size"].(float64); ok {
-			opts = append(opts, llamacli.WithContextSize(int(v)))
-		}
-		if v, ok := cfg.ExtraBody["lib_path"].(string); ok && v != "" {
-			opts = append(opts, llamacli.WithLibraryPath(v))
-		}
-		if cfg.RequestTimeout > 0 {
-			opts = append(opts, llamacli.WithTimeout(time.Duration(cfg.RequestTimeout)*time.Second))
-		}
-		return llamacli.NewProvider(binary, opts...), modelID, nil
 
 	case "llama-server", "llamaserver":
 		// Managed on-device persistent server.
