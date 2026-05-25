@@ -1,42 +1,48 @@
-# TUI In-App Chat — Design Proposal
+# TUI In-App Chat
 
-A design proposal for adding an interactive chat surface to `cmd/qclaw-launcher-tui` so users can test both the **Direct** (raw model) and **Agentic** (full agent loop) paths without ever leaving the TUI. Today the TUI's `Start Talk` action suspends the TUI and drops into `qclaw agent` in the host terminal; this proposal replaces that with an in-TUI chat page that supports both modes and live token streaming.
+An interactive chat surface inside `cmd/qclaw-launcher-tui` that lets users test both the **Direct** (pre-router + single LLM call, token streaming) and **Agentic** (full agent loop, tools, streaming) paths without ever leaving the TUI. The previous `Start Talk` action suspended the TUI and dropped into `qclaw agent` in the host terminal; this page replaces it.
 
-**Status:** proposal — not yet implemented.
+**Status:** implemented — `QClaw-v2` branch, commit `740bfa5`.
 
 ---
 
 ## Goals
 
-1. Add a `Chat` page to the TUI that hosts an interactive conversation with the model.
+1. Add a `Chat` page to the TUI hosting an interactive conversation with the model.
 2. Support two modes selectable at runtime, with no TUI suspension:
-   - **Direct** — raw chat against the `llama-server` HTTP API, with true token-by-token streaming (same UX as `llama-cli -cnv`).
-   - **Agentic** — full QClaw agent loop, including tools, the 23-rule pre-router, and the 15-skill tree.
+   - **Direct** — pre-router + single LLM call, true token-by-token streaming.
+   - **Agentic** — full QClaw agent loop: tools, 23-rule pre-router, 15-skill tree, multi-iteration, streaming.
 3. Let the user flip between modes (F2) inside the same chat page without restarting anything.
-4. Keep the existing `Start Gateway` and `Start Talk` actions working for users who prefer the terminal-based workflow.
+4. Replace `Start Talk` with `Chat`; keep `Start Gateway` unchanged.
 
 ---
 
 ## Layout
 
 ```
-┌─ Chat ─────────────────────────────────────┐
-│ Mode: [● Direct] [○ Agentic]  Engine: yzma │
-├────────────────────────────────────────────┤
-│ You: which pins do PWM?                    │
-│                                            │
-│ QClaw: D3, D5, D6, D9, D10, D11▎          │  ← streaming
-│                                            │
-├────────────────────────────────────────────┤
-│ > _                                        │
-└────────────────────────────────────────────┘
- F2 toggle mode · Ctrl+L clear · ESC back
+┌─ Chat ──────────────────────────────────────────────────────────┐
+│ ● Direct  ○ Agentic  │  yzma  │  F2:mode  Ctrl+L:clear  Esc:back│
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ You: which pins do PWM?                                          │
+│ QClaw: D3, D5, D6, D9, D10, D11▎         ← streaming tokens     │
+│                                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│ ┌─ Message ──────────────────────────────────────────────────── │
+│ │You: _                                                          │
+│ └────────────────────────────────────────────────────────────── │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-- **Header strip** — current mode indicator + engine name (read from `agents.defaults.model_name`).
-- **Output pane** — `tview.TextView` with scrollback, word wrap, dynamic colors. Updates from background goroutines flushed via `app.QueueUpdateDraw()`.
-- **Input field** — `tview.InputField`. Enter submits, Ctrl+L clears the output pane, Esc returns to the main menu.
-- **Footer** — keybinding hints.
+- **Mode bar** (1 row) — active mode shown with green `●`; engine name from `agents.defaults.model`; keybinding hints. Background uses `MoreContrastBackgroundColor`.
+- **Output pane** — `tview.TextView`, `SetDynamicColors(true)`, `SetWordWrap(true)`, `SetScrollable(true)`. All goroutine updates go through `app.QueueUpdateDraw()`.
+- **Input field** — `tview.InputField` with label `"You: "`. Enter submits; placeholder becomes `⊙ thinking…` while a request is in-flight. Esc closes the page.
+- **Color scheme** (inline tview tags, not constants):
+  - `[#8be9fd]` — user turns
+  - `[#f1faff]` — assistant turns
+  - `[#bd93f9]` — tool calls / engine name
+  - `[#50fa7b]` — active mode indicator / tool-done
+  - `[#ff5555]` — errors / tool-error
 
 ---
 
@@ -44,42 +50,47 @@ A design proposal for adding an interactive chat surface to `cmd/qclaw-launcher-
 
 ### Direct mode
 
-Direct mode targets QClaw's real Direct path — a single LLM call with the **23-rule pre-router** applied before submission. The pre-router (`pkg/agent/skill_preload.go`) matches the user's query against 23 routing rules and inlines relevant skill content directly into the system prompt. This is what gives QClaw Direct mode its targeted, context-rich responses.
+Calls `agentLoop.ProcessDirectSingleTurnStream(ctx, text, sessionKey, onToken)`.
 
-**Important:** a naïve implementation that POSTs directly to `/v1/chat/completions` bypasses `pkg/agent` entirely and therefore bypasses the pre-router. That produces raw model output with no skill context — indistinguishable from `llama-cli -cnv` in behavior, not QClaw. See *Pre-router and the Direct path* below for the three implementation options.
+The pre-router (`pkg/agent/skill_preload.go`) runs before the LLM call, inlining skill content into the system prompt. The underlying `llamaserver.Provider.ChatStream` reads the SSE stream and calls `onToken` for each `choices[0].delta.content` delta. Each callback queues a `QueueUpdateDraw` to append the token to the output pane.
 
-**Intended behavior (Option 3 — recommended):**
+Session history is managed by the agent loop's session store (file-backed at `~/.qclaw/workspace/sessions/`). The session key `"tui:direct:N"` where N is the toggle counter means each mode switch starts a clean session.
 
-A long-lived `http.Client` POSTs each submitted message to `http://127.0.0.1:8083/v1/chat/completions` with `"stream": true`, but only after the pre-router has run and enriched the system prompt. A goroutine reads the SSE stream line-by-line, decodes each `choices[0].delta.content` chunk, and appends it to the output pane through `app.QueueUpdateDraw()`.
+If the active provider does not implement `providers.Streamable`, the loop falls back to buffered `Chat()` transparently and the full response is written at completion.
 
-- True token streaming, pre-router applied — the combination that makes Direct mode in the TUI equivalent to `qclaw direct`.
-- Conversation history is kept as a `[]openai.ChatMessage` slice; each submit appends the new user turn and re-sends the full history.
-- Requires adding streaming hooks to `ProcessDirectSingleTurn` in `pkg/agent/loop.go` (~150 lines across `pkg/agent` and `pkg/providers`). See *Pre-router and the Direct path* for scope.
+### Agentic mode
 
-### Agentic mode (full agent loop)
+Calls `agentLoop.ProcessAgenticWithProgressStream(ctx, text, sessionKey, onProgress, onToken)`.
 
-Spawn `qclaw agent` once as a child process with piped `stdin`/`stdout`/`stderr`. A goroutine pumps the agent's stdout into the output pane (line-buffered — the agent emits chunks of formatted output, not raw tokens). The input field writes the user's line + `\n` to stdin. The subprocess stays alive across messages until the user exits the chat page.
+The full tool loop runs (up to `max_tool_iterations`). An `onProgress` callback renders tool events inline in the output pane:
+- `[#bd93f9]⚙ toolName(args)[-]` on `tool_start`
+- `[#50fa7b]✓ message[-]` on `tool_done`
+- `[#ff5555]✗ message[-]` on `tool_error`
 
-- Full agentic capability: 8 tools, pre-router, 15 skills, multi-iteration loop.
-- Output is *not* a clean token stream — it's the agent's terminal output, including tool-call markup, reasoning blocks, and bulk text dumps. This is a fundamental limitation of the current agent: it accumulates the full LLM response before printing. Fixing it would require streaming hooks inside `pkg/agent/loop.go`.
+An `onToken` callback streams the model's final text turn. If the provider's streaming path refuses tool-aware requests (`ErrStreamingUnsupported`), the loop falls back to buffered mode silently.
+
+Session key is `"tui:agentic:N"`.
 
 ---
 
 ## Pre-router and the Direct path
 
-QClaw's "Direct" path is not raw model chat — it is `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, which applies the 23-rule pre-router (`pkg/agent/skill_preload.go`) before each LLM call. The pre-router inspects the user's message, matches it against routing rules, and inlines matching skill content into the system prompt. Without it, the model has no awareness of QClaw's skills, tools, or domain knowledge.
+QClaw's "Direct" path is `ProcessDirectSingleTurnStream` in `pkg/agent/loop.go` — not raw `/v1/chat/completions` chat. The pre-router (`pkg/agent/skill_preload.go`) runs before each LLM call, matching the user query against 23 routing rules and inlining relevant skill content into the system prompt.
 
-Raw `/v1/chat/completions` chat bypasses `pkg/agent` entirely. The three implementation options for TUI Direct mode are:
+When this document was first written, the streaming infrastructure did not yet exist and three options were identified:
 
-| Option | Pre-router | Token streaming | Implementation scope |
+| Option | Pre-router | Token streaming | Status |
 |---|---|---|---|
-| **1 — Raw chat** | ✗ | ✓ | TUI-only, no pkg changes. Not true QClaw Direct. |
-| **2 — `qclaw direct` subprocess** | ✓ | ✗ (bulk output) | Same as Agentic mode's subprocess pattern; no streaming. |
-| **3 — Streaming hooks in `ProcessDirectSingleTurn`** ⭐ | ✓ | ✓ | ~150 LoC across `pkg/agent/loop.go` and `pkg/providers`; the right fix. |
+| **1 — Raw HTTP chat** | ✗ | ✓ | Not used — bypasses pkg/agent |
+| **2 — `qclaw direct` subprocess** | ✓ | ✗ (bulk output) | Not used |
+| **3 — Streaming hooks in `ProcessDirectSingleTurn`** ⭐ | ✓ | ✓ | **Implemented** |
 
-**Recommendation: Option 3.** Add an optional streaming callback to `ProcessDirectSingleTurn` (and to the underlying provider's `Chat()` call path). The TUI passes a callback that writes each token to the output pane via `app.QueueUpdateDraw()`. This is the only option that delivers both the pre-router and token-by-token streaming — the two qualities that define QClaw Direct mode.
+Option 3 was already fully implemented in the codebase before the TUI work began:
+- `ProcessDirectSingleTurnStream` with `onToken func(string)` existed in `pkg/agent/loop.go`
+- `llamaserver.Provider` already implemented `providers.Streamable` via `ChatStream`
+- The agent's `runLLMIteration` already detected `Streamable` and routed to it when `StreamCallback != nil`
 
-Until Option 3 is implemented, the TUI can ship with Option 1 as a clearly-labelled "Raw chat (no pre-router)" mode — useful for baseline testing — while Option 3 remains an open implementation task. This should be documented in the UI header strip so users understand which mode is active.
+The TUI consumes this existing API directly — no changes to `pkg/agent` or `pkg/providers` were needed.
 
 ---
 
@@ -87,123 +98,72 @@ Until Option 3 is implemented, the TUI can ship with Option 1 as a clearly-label
 
 ### 1. Llama-server lifecycle
 
-Direct mode needs `llama-server` listening on port 8083. Agentic mode's provider also auto-spawns one on the same port (see `pkg/providers/llamaserver`). The TUI must decide who owns the process so the two modes don't race.
+**Decision:** the `AgentLoop`'s provider (`llamaserver.Provider`) owns the llama-server process. The chat page creates a fresh `AgentLoop` (and therefore a fresh provider) on page entry via `newChatPage()`. The provider's `ensureServer()` spawns `llama-server` on the first `Chat()` or `ChatStream()` call and keeps it running for the lifetime of the page.
 
-**Decision:** the TUI owns it. On chat-page entry, the TUI spawns `engines/yzma/lib/llama-server` (the same argv the provider would build) if no process is already listening on 8083. On chat-page exit, the TUI kills it. Agentic mode detects the existing port and reuses it via the provider's standard health-check path — no double-spawn.
+The cold start (3–5 min on Uno Q) is deferred to the first submit. During the wait, the input placeholder shows `⊙ thinking…`. The `AgentLoop` and `MessageBus` are closed in a background goroutine when the page exits (ESC or context cancel) so the UI is never blocked.
 
-Trade-off: the first entry into chat-mode pays the full 3–5 min cold load before either mode is usable. We display "Loading model… (cold start, 3–5 min)" in the output pane while `/health` returns non-OK, then unlock the input field.
+Both Direct and Agentic mode share the same `AgentLoop` and therefore the same llama-server process — no double-spawn on mode switch.
 
 ### 2. Mode switching resets history
 
-Direct and Agentic operate on fundamentally different context shapes:
-- Direct: `[]openai.ChatMessage` with raw user/assistant turns.
-- Agentic: a working session managed by `pkg/agent`, including tool call/result pairs, pre-router injections, and iteration state.
-
-Replaying one as the other produces nonsense. **Decision:** toggling F2 clears the output pane and starts a fresh conversation in the new mode. The agent subprocess stays running across toggles so the switch is instant.
+**Decision:** each mode toggle increments a `toggleCtr` counter. The session key is `"tui:direct:N"` / `"tui:agentic:N"` where N = `toggleCtr`. A new key starts a new session with empty history. The output pane is also cleared. The `AgentLoop` stays alive — only the session context resets.
 
 ### 3. Menu placement
 
-**Decision:** replace `Start Talk` with a single `Chat` entry that opens the new page. `Start Talk` exists today only because the TUI couldn't host an interactive chat — once it can, the suspend-and-launch dance is strictly worse than an in-TUI chat page.
-
-`Start Gateway` stays. It's about wiring up channel adapters (Telegram, Discord, etc.) for remote conversation, not about local testing.
+**Decision:** `Start Talk` is replaced by `Chat`. `Start Talk` suspended the TUI; the in-TUI chat page is strictly better for local testing. `Start Gateway` is unchanged.
 
 ### 4. Mutual exclusion with gateway
 
-The gateway also wants port 8083. **Decision:** disable the `Chat` menu item while the gateway is running, and disable `Start Gateway` while the chat page is open. Enforced by checking `s.isGatewayRunning()` before either action.
+**Decision:** `Chat` is disabled while the gateway is running (`s.isGatewayRunning()`); `Start Gateway` is disabled while the chat page is open (`s.isChatOpen`). Both checks live in `refreshMainMenu` in `app.go`. When the chat page closes, `isChatOpen` is set to `false` before `s.pop()` so the menu refreshes correctly.
 
 ---
 
-## Implementation plan
+## Implementation
 
-| File | Change | Approx. LoC |
+| File | Change | Actual LoC |
 |---|---|---|
-| `cmd/qclaw-launcher-tui/internal/ui/chat.go` | New file — chat page, both modes, mode toggle, lifecycle | ~400 |
-| `cmd/qclaw-launcher-tui/internal/ui/app.go` | Replace `Start Talk` menu entry with `Chat`; add `s.openChat()`; add gateway/chat mutual-exclusion checks | ~30 |
-| `cmd/qclaw-launcher-tui/internal/ui/style.go` | Add 1–2 colors for streaming cursor + mode indicator | ~5 |
+| `cmd/qclaw-launcher-tui/internal/ui/chat.go` | New — `chatPage` struct, both modes, toggle, lifecycle | 327 |
+| `cmd/qclaw-launcher-tui/internal/ui/app.go` | Replace `Start Talk` with `Chat`; `isChatOpen`; `openChat()`; mutual-exclusion | +35 / -19 |
 
-**If shipping Option 3 (recommended)** — additional changes required before the TUI work above:
+`pkg/agent`, `pkg/providers`, and `style.go` were not modified — the TUI uses existing public APIs only.
 
-| File | Change | Approx. LoC |
-|---|---|---|
-| `pkg/agent/loop.go` | Add `StreamFunc func(token string)` parameter to `ProcessDirectSingleTurn`; pass it through to the provider call | ~40 |
-| `pkg/providers/llamaserver/provider.go` | Add streaming variant of `Chat()` that accepts a token callback; reuse the existing SSE-reading logic | ~80 |
-| `pkg/providers/openai_compat/client.go` | Expose SSE stream reader as a first-class method (currently private to the HTTP layer) | ~30 |
+### Key types and entry points
 
-These changes add streaming to the production code path — unit-testable independently of the TUI. The TUI `chat.go` then calls the streaming variant via the existing provider interface rather than reaching directly to the HTTP layer.
-
-### Streaming-token pseudocode (Direct mode)
-
-```go
-func (c *chatPage) sendDirect(prompt string) {
-    c.history = append(c.history, openai.ChatMessage{Role: "user", Content: prompt})
-    body, _ := json.Marshal(map[string]any{
-        "model":    c.engineName,
-        "messages": c.history,
-        "stream":   true,
-    })
-    req, _ := http.NewRequest("POST", c.endpoint+"/v1/chat/completions", bytes.NewReader(body))
-    req.Header.Set("Content-Type", "application/json")
-    resp, _ := c.httpClient.Do(req)
-    defer resp.Body.Close()
-
-    scanner := bufio.NewScanner(resp.Body)
-    var assistant strings.Builder
-    for scanner.Scan() {
-        line := scanner.Text()
-        if !strings.HasPrefix(line, "data: ") { continue }
-        payload := strings.TrimPrefix(line, "data: ")
-        if payload == "[DONE]" { break }
-        var chunk struct {
-            Choices []struct{ Delta struct{ Content string } }
-        }
-        if json.Unmarshal([]byte(payload), &chunk) != nil { continue }
-        if len(chunk.Choices) == 0 { continue }
-        tok := chunk.Choices[0].Delta.Content
-        assistant.WriteString(tok)
-        c.app.QueueUpdateDraw(func() { c.output.Write([]byte(tok)) })
-    }
-    c.history = append(c.history, openai.ChatMessage{Role: "assistant", Content: assistant.String()})
-}
+```
+appState.isChatOpen bool                       // mutual-exclusion flag
+appState.openChat()                            // validates model, creates chatPage, pushes page
+chatPage.dispatch(text)                        // called on Enter; spawns goroutine
+chatPage.runDirect(text, sessionKey)           // → ProcessDirectSingleTurnStream
+chatPage.runAgentic(text, sessionKey)          // → ProcessAgenticWithProgressStream
+chatPage.toggleMode()                          // F2 handler: bump toggleCtr, clear output
+chatPage.close()                               // ESC: cancel ctx, close loop/bus, pop page
 ```
 
-### Subprocess pump pseudocode (Agentic mode)
+### Session key scheme
 
-```go
-func (c *chatPage) startAgent() error {
-    cmd := exec.Command("qclaw", "agent")
-    stdin, _ := cmd.StdinPipe()
-    stdout, _ := cmd.StdoutPipe()
-    if err := cmd.Start(); err != nil { return err }
-    c.agentCmd, c.agentStdin = cmd, stdin
-    go func() {
-        scanner := bufio.NewScanner(stdout)
-        for scanner.Scan() {
-            line := scanner.Text() + "\n"
-            c.app.QueueUpdateDraw(func() { c.output.Write([]byte(line)) })
-        }
-    }()
-    return nil
-}
-
-func (c *chatPage) sendAgentic(prompt string) {
-    fmt.Fprintln(c.agentStdin, prompt)
-}
 ```
+"tui:direct:0"   — first Direct session (initial page open)
+"tui:agentic:1"  — after first F2 toggle to Agentic
+"tui:direct:2"   — after second F2 toggle back to Direct
+```
+
+Each key maps to a distinct file in `~/.qclaw/workspace/sessions/`.
 
 ---
 
-## Open questions
+## Stretch goals (not yet implemented)
 
-1. **Cursor "▎" character during streaming**: simple to add — write `"▎"` after each token, then erase it before writing the next. Worth doing for the live feel.
-2. **Token count / TPS display** in the header during streaming? Easy stretch goal once Direct mode is wired up.
-3. **Persist chat history** between TUI invocations? Out of scope for v1 — the existing gateway sessions at `~/.qclaw/workspace/sessions/` already cover this for the agentic side.
-4. **Color the assistant output** differently from the user input? Strong yes — `tview.TextView` supports inline color tags.
+1. **Streaming cursor `▎`** — write `▎` after each token, erase before the next. Adds live feel.
+2. **Token count / TPS display** in the mode bar during streaming. Easy once the provider exposes usage info from the SSE stream's final chunk.
+3. **Persist chat history** across TUI invocations. The session files already exist on disk — a "resume" option on page entry could load the last session for each mode.
 
 ---
 
 ## Related
 
-- `cmd/qclaw-launcher-tui/internal/ui/app.go` — current `Start Talk` and `Start Gateway` actions.
-- `pkg/providers/llamaserver/provider.go` — the auto-spawn logic that the TUI's Direct-mode lifecycle should mirror.
-- `pkg/agent/loop.go` — `ProcessDirectSingleTurn` and the agent loop; the place to add token-level streaming hooks if Agentic mode ever needs live tokens.
-- [`engines/yzma/lib/BUILD.md`](../../../engines/yzma/lib/BUILD.md) — `llama-server` HTTP API reference, including the `/v1/chat/completions` streaming contract.
+- `cmd/qclaw-launcher-tui/internal/ui/chat.go` — the implementation.
+- `cmd/qclaw-launcher-tui/internal/ui/app.go` — `openChat()`, `isChatOpen`, `refreshMainMenu`.
+- `pkg/agent/loop.go` — `ProcessDirectSingleTurnStream`, `ProcessAgenticWithProgressStream`.
+- `pkg/providers/llamaserver/provider.go` — `ChatStream` (implements `providers.Streamable`).
+- `pkg/providers/types.go` — `Streamable` interface definition.
+- [`engines/yzma/lib/BUILD.md`](../../../engines/yzma/lib/BUILD.md) — `llama-server` HTTP API reference.
