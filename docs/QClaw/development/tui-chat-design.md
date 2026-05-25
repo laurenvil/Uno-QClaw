@@ -42,13 +42,19 @@ A design proposal for adding an interactive chat surface to `cmd/qclaw-launcher-
 
 ## How each mode works
 
-### Direct mode (raw `llama-server` chat)
+### Direct mode
 
-A long-lived `http.Client` POSTs each submitted message to `http://127.0.0.1:8083/v1/chat/completions` with `"stream": true`. A goroutine reads the SSE stream line-by-line, decodes each `choices[0].delta.content` chunk, and appends it to the output pane through `app.QueueUpdateDraw()`.
+Direct mode targets QClaw's real Direct path — a single LLM call with the **23-rule pre-router** applied before submission. The pre-router (`pkg/agent/skill_preload.go`) matches the user's query against 23 routing rules and inlines relevant skill content directly into the system prompt. This is what gives QClaw Direct mode its targeted, context-rich responses.
 
-- True token streaming, indistinguishable from `llama-cli -cnv` in feel.
+**Important:** a naïve implementation that POSTs directly to `/v1/chat/completions` bypasses `pkg/agent` entirely and therefore bypasses the pre-router. That produces raw model output with no skill context — indistinguishable from `llama-cli -cnv` in behavior, not QClaw. See *Pre-router and the Direct path* below for the three implementation options.
+
+**Intended behavior (Option 3 — recommended):**
+
+A long-lived `http.Client` POSTs each submitted message to `http://127.0.0.1:8083/v1/chat/completions` with `"stream": true`, but only after the pre-router has run and enriched the system prompt. A goroutine reads the SSE stream line-by-line, decodes each `choices[0].delta.content` chunk, and appends it to the output pane through `app.QueueUpdateDraw()`.
+
+- True token streaming, pre-router applied — the combination that makes Direct mode in the TUI equivalent to `qclaw direct`.
 - Conversation history is kept as a `[]openai.ChatMessage` slice; each submit appends the new user turn and re-sends the full history.
-- The system prompt is the same `SOUL.md` + `IDENTITY.md` bundle the agentic path uses, so model behavior matches.
+- Requires adding streaming hooks to `ProcessDirectSingleTurn` in `pkg/agent/loop.go` (~150 lines across `pkg/agent` and `pkg/providers`). See *Pre-router and the Direct path* for scope.
 
 ### Agentic mode (full agent loop)
 
@@ -56,6 +62,24 @@ Spawn `qclaw agent` once as a child process with piped `stdin`/`stdout`/`stderr`
 
 - Full agentic capability: 8 tools, pre-router, 15 skills, multi-iteration loop.
 - Output is *not* a clean token stream — it's the agent's terminal output, including tool-call markup, reasoning blocks, and bulk text dumps. This is a fundamental limitation of the current agent: it accumulates the full LLM response before printing. Fixing it would require streaming hooks inside `pkg/agent/loop.go`.
+
+---
+
+## Pre-router and the Direct path
+
+QClaw's "Direct" path is not raw model chat — it is `ProcessDirectSingleTurn` in `pkg/agent/loop.go`, which applies the 23-rule pre-router (`pkg/agent/skill_preload.go`) before each LLM call. The pre-router inspects the user's message, matches it against routing rules, and inlines matching skill content into the system prompt. Without it, the model has no awareness of QClaw's skills, tools, or domain knowledge.
+
+Raw `/v1/chat/completions` chat bypasses `pkg/agent` entirely. The three implementation options for TUI Direct mode are:
+
+| Option | Pre-router | Token streaming | Implementation scope |
+|---|---|---|---|
+| **1 — Raw chat** | ✗ | ✓ | TUI-only, no pkg changes. Not true QClaw Direct. |
+| **2 — `qclaw direct` subprocess** | ✓ | ✗ (bulk output) | Same as Agentic mode's subprocess pattern; no streaming. |
+| **3 — Streaming hooks in `ProcessDirectSingleTurn`** ⭐ | ✓ | ✓ | ~150 LoC across `pkg/agent/loop.go` and `pkg/providers`; the right fix. |
+
+**Recommendation: Option 3.** Add an optional streaming callback to `ProcessDirectSingleTurn` (and to the underlying provider's `Chat()` call path). The TUI passes a callback that writes each token to the output pane via `app.QueueUpdateDraw()`. This is the only option that delivers both the pre-router and token-by-token streaming — the two qualities that define QClaw Direct mode.
+
+Until Option 3 is implemented, the TUI can ship with Option 1 as a clearly-labelled "Raw chat (no pre-router)" mode — useful for baseline testing — while Option 3 remains an open implementation task. This should be documented in the UI header strip so users understand which mode is active.
 
 ---
 
@@ -97,7 +121,15 @@ The gateway also wants port 8083. **Decision:** disable the `Chat` menu item whi
 | `cmd/qclaw-launcher-tui/internal/ui/app.go` | Replace `Start Talk` menu entry with `Chat`; add `s.openChat()`; add gateway/chat mutual-exclusion checks | ~30 |
 | `cmd/qclaw-launcher-tui/internal/ui/style.go` | Add 1–2 colors for streaming cursor + mode indicator | ~5 |
 
-No changes needed to `pkg/agent`, `pkg/providers`, or any other production code path. The TUI uses existing public APIs only.
+**If shipping Option 3 (recommended)** — additional changes required before the TUI work above:
+
+| File | Change | Approx. LoC |
+|---|---|---|
+| `pkg/agent/loop.go` | Add `StreamFunc func(token string)` parameter to `ProcessDirectSingleTurn`; pass it through to the provider call | ~40 |
+| `pkg/providers/llamaserver/provider.go` | Add streaming variant of `Chat()` that accepts a token callback; reuse the existing SSE-reading logic | ~80 |
+| `pkg/providers/openai_compat/client.go` | Expose SSE stream reader as a first-class method (currently private to the HTTP layer) | ~30 |
+
+These changes add streaming to the production code path — unit-testable independently of the TUI. The TUI `chat.go` then calls the streaming variant via the existing provider interface rather than reaching directly to the HTTP layer.
 
 ### Streaming-token pseudocode (Direct mode)
 
