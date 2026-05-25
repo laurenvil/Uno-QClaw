@@ -27,6 +27,7 @@ type appState struct {
 	backupPath  string
 	dirty       bool
 	logPath     string
+	isChatOpen  bool
 }
 
 func Run() error {
@@ -168,12 +169,18 @@ func refreshMainMenu(menu *Menu, s *appState) {
 	channelReady := s.hasEnabledChannel()
 	enabledCount, totalChannels := s.countChannels()
 	gatewayRunning := s.gatewayCmd != nil || s.isGatewayRunning()
+	chatOpen := s.isChatOpen
 
 	gatewayLabel := "Start Gateway"
 	gatewayDescription := "Launch gateway for channels"
 	if gatewayRunning {
 		gatewayLabel = "Stop Gateway"
 		gatewayDescription = "Gateway running"
+	}
+
+	chatDescription := "Chat with QClaw in the TUI"
+	if gatewayRunning {
+		chatDescription = "Unavailable while gateway is running"
 	}
 
 	items := []MenuItem{
@@ -206,12 +213,12 @@ func refreshMainMenu(menu *Menu, s *appState) {
 			}(),
 		},
 		{
-			Label:       "Start Talk",
-			Description: "Open qclaw agent in terminal",
+			Label:       "Chat",
+			Description: chatDescription,
 			Action: func() {
-				s.requestStartTalk()
+				s.requestOpenChat()
 			},
-			Disabled: !modelReady,
+			Disabled: !modelReady || gatewayRunning,
 		},
 		{
 			Label:       gatewayLabel,
@@ -224,7 +231,7 @@ func refreshMainMenu(menu *Menu, s *appState) {
 				}
 				refreshMainMenu(menu, s)
 			},
-			Disabled: !gatewayRunning && (!modelReady || !channelReady),
+			Disabled: chatOpen || (!gatewayRunning && (!modelReady || !channelReady)),
 		},
 		{
 			Label:       "View Gateway Log",
@@ -278,16 +285,16 @@ func (s *appState) requestExit() {
 	s.app.Stop()
 }
 
-func (s *appState) requestStartTalk() {
+func (s *appState) requestOpenChat() {
 	if s.dirty {
 		s.confirmApplyOrDiscard(func() {
-			s.startTalk()
+			s.openChat()
 		}, func() {
-			s.startTalk()
+			s.openChat()
 		})
 		return
 	}
-	s.startTalk()
+	s.openChat()
 }
 
 func (s *appState) requestStartGateway() {
@@ -353,21 +360,22 @@ func rootChannelLabel(valid bool) string {
 	return "Channel"
 }
 
-func (s *appState) startTalk() {
+func (s *appState) openChat() {
 	if !s.isActiveModelValid() {
-		s.showMessage("Model required", "Select a valid model before starting talk")
+		s.showMessage("Model required", "Select a valid model before opening chat")
 		return
 	}
 	if !s.applyChangesValidated() {
 		return
 	}
-	s.app.Suspend(func() {
-		cmd := exec.Command("qclaw", "agent")
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		_ = cmd.Run()
-	})
+	cp, err := s.newChatPage()
+	if err != nil {
+		s.showMessage("Chat failed", err.Error())
+		return
+	}
+	s.isChatOpen = true
+	s.push("chat", cp.flex)
+	s.app.SetFocus(cp.input)
 }
 
 func (s *appState) startGateway() {
