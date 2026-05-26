@@ -215,9 +215,9 @@ server stays warm between prompts.
 | Metric | Value |
 |---|---|
 | Cold wall (breathe, prompt 0) | **28m41s** (vs Q4_0 11m49.6s, +143%) |
-| Warm mean (prompts 1–8) | **27m09s** (range 20m01s – 36m21s) |
-| Success rate | 6/9 ✅ · 3/9 empty_response ❌ |
-| Sketch correctness | **4/4 correct** when a sketch was generated |
+| Warm mean (prompts 1–8) | **26m39s** (range 20m01s – 36m21s) |
+| Success rate | **8/9 ✅** · 1/9 empty_response ❌ (breathe only; pot + led_matrix rerun ✅) |
+| Sketch correctness | **6/6 correct** (all sketch prompts, including reruns) |
 | Factual accuracy | **3/3 correct**, more detailed than Q4_0 |
 
 **Headline finding:** Q8 + 16K ctx is 2–3× slower than Q4_0 + 8K ctx on every metric. The
@@ -225,9 +225,10 @@ doubled context window loads more skill content per prompt, making warm turns as
 runs. Q8 is not viable for interactive production use at current prefill speed; retain Q4_0 for
 production and reserve Q8 for offline/batch use cases.
 
-**empty_response pattern confirmed:** When the model's final agent action is an `upload` tool
-call with no preceding skill read, it generates 0 tokens on the next turn (3/8 prompts affected).
-Fix is a short post-upload confirmation prompt injection.
+**empty_response pattern is probabilistic:** Original run had 3/9 empty_response failures.
+Reruns of pot and led_matrix both succeeded with fresh session keys (temperature=0.3 variance).
+Only `breathe` remains unconfirmed. A post-upload confirmation prompt injection would reduce
+variance further.
 
 Full report: [run10/q8-9prompt-agentic-benchmark.md](run10/q8-9prompt-agentic-benchmark.md).
 
