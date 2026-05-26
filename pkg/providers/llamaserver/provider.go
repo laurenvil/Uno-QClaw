@@ -38,7 +38,7 @@ type (
 const (
 	defaultPort      = 8080
 	defaultHost      = "127.0.0.1"
-	healthCheckLimit = 30
+	healthCheckLimit = 360 // 6 minutes — covers cold model load on Cortex-A53
 )
 
 type Provider struct {
@@ -348,7 +348,7 @@ func (p *Provider) WarmUp(ctx context.Context, model string) error {
 func (p *Provider) ensureServer(ctx context.Context, model string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if p.initialized {
 		// Check if process is still alive
 		if p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
@@ -359,8 +359,13 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 		}
 	}
 
+	// Resolve model path. If the caller passes an engine-key alias (e.g. "yzma")
+	// that doesn't correspond to a file on disk, fall back to the path that was
+	// used on the last successful start so that crash-restarts still work.
 	modelPath, err := p.resolveModel(model)
-	if err != nil {
+	if err != nil && p.modelPath != "" {
+		modelPath = p.modelPath
+	} else if err != nil {
 		return err
 	}
 	
@@ -429,6 +434,7 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 		return fmt.Errorf("llama-server failed to become healthy within %d seconds", healthCheckLimit)
 	}
 	
+	p.modelPath = modelPath // remember resolved path for crash-restart
 	p.initialized = true
 	return nil
 }
