@@ -242,8 +242,11 @@ func (cp *chatPage) runDirect(text, sessionKey string) error {
 		if cp.ctx.Err() != nil {
 			return
 		}
-		firstToken.Store(true)
+		isFirst := firstToken.CompareAndSwap(false, true)
 		cp.s.app.QueueUpdateDraw(func() {
+			if isFirst {
+				cp.input.SetPlaceholder("")
+			}
 			fmt.Fprint(cp.output, tview.Escape(tok))
 			cp.output.ScrollToEnd()
 		})
@@ -269,6 +272,15 @@ func (cp *chatPage) runDirect(text, sessionKey string) error {
 // and streams content tokens into the output pane.
 func (cp *chatPage) runAgentic(text, sessionKey string) error {
 	var firstToken atomic.Bool
+	var placeholderCleared atomic.Bool
+
+	clearPlaceholder := func() {
+		if placeholderCleared.CompareAndSwap(false, true) {
+			cp.s.app.QueueUpdateDraw(func() {
+				cp.input.SetPlaceholder("")
+			})
+		}
+	}
 
 	onProgress := func(ev agent.ProgressEvent) {
 		if cp.ctx.Err() != nil {
@@ -288,6 +300,7 @@ func (cp *chatPage) runAgentic(text, sessionKey string) error {
 			line = fmt.Sprintf("[#ff5555]✗ %s[-]\n", tview.Escape(ev.Message))
 		}
 		if line != "" {
+			clearPlaceholder()
 			cp.s.app.QueueUpdateDraw(func() {
 				fmt.Fprint(cp.output, line)
 				cp.output.ScrollToEnd()
@@ -299,8 +312,12 @@ func (cp *chatPage) runAgentic(text, sessionKey string) error {
 		if cp.ctx.Err() != nil {
 			return
 		}
-		firstToken.Store(true)
+		isFirst := firstToken.CompareAndSwap(false, true)
 		cp.s.app.QueueUpdateDraw(func() {
+			// Inline the placeholder clear — must not call QueueUpdateDraw again from here.
+			if isFirst && placeholderCleared.CompareAndSwap(false, true) {
+				cp.input.SetPlaceholder("")
+			}
 			fmt.Fprint(cp.output, tview.Escape(tok))
 			cp.output.ScrollToEnd()
 		})
