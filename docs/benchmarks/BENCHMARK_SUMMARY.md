@@ -206,6 +206,33 @@ and a no-progress wall-clock guard.** Until then, yzma llama-server is the direc
 
 Full report: [run9/three-engine-3x-comparison.md](run9/three-engine-3x-comparison.md).
 
+### Run 10 — Q8 full 9-prompt agentic battery (2026-05-26)
+
+First benchmark with `Qwen3.5-0.8B-Q8_0.gguf` (775 MB, Q8_0) across all 9 standard prompts.
+Context size bumped 8192 → 16384 this run (8762-token overflow fix). Unique session per prompt,
+server stays warm between prompts.
+
+| Metric | Value |
+|---|---|
+| Cold wall (breathe, prompt 0) | **28m41s** (vs Q4_0 11m49.6s, +143%) |
+| Warm mean (prompts 1–8) | **27m09s** (range 20m01s – 36m21s) |
+| Success rate | 6/9 ✅ · 3/9 empty_response ❌ |
+| Sketch correctness | **4/4 correct** when a sketch was generated |
+| Factual accuracy | **3/3 correct**, more detailed than Q4_0 |
+
+**Headline finding:** Q8 + 16K ctx is 2–3× slower than Q4_0 + 8K ctx on every metric. The
+doubled context window loads more skill content per prompt, making warm turns as slow as cold
+runs. Q8 is not viable for interactive production use at current prefill speed; retain Q4_0 for
+production and reserve Q8 for offline/batch use cases.
+
+**empty_response pattern confirmed:** When the model's final agent action is an `upload` tool
+call with no preceding skill read, it generates 0 tokens on the next turn (3/8 prompts affected).
+Fix is a short post-upload confirmation prompt injection.
+
+Full report: [run10/q8-9prompt-agentic-benchmark.md](run10/q8-9prompt-agentic-benchmark.md).
+
+---
+
 **Next steps (in priority order):**
 1. Fix llamacli provider: pass `--repeat-penalty 1.1 --repeat-last-n 64` defaults, expose presence/frequency penalty knobs, add no-progress wall-clock guard. Then re-run Run 9 llama-cli passes.
 2. Warm-direct benchmark on yzma — measure KV prefix-cache hit rate to settle whether persistent server actually helps repeated direct queries

@@ -376,8 +376,7 @@ func (p *Provider) ensureServer(ctx context.Context, model string) error {
 		"-t", fmt.Sprintf("%d", p.threads),
 		"-c", fmt.Sprintf("%d", p.ctxSize),
 		"-np", fmt.Sprintf("%d", p.parallel),
-		"--reasoning", "off", // Disable Qwen 3.5 auto-<think> injection
-		"--jinja",           // Enable template-based tool calling
+		"--jinja", // Enable template-based tool calling
 		"--log-disable",     // Keep stdout clean
 	}
 	args = append(args, p.extraArgs...)

@@ -23,9 +23,31 @@
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 8192,
+        "ctx_size": 16384,
         "parallel": 1,
         "port": 8083,
+        "lib_path": "engines/yzma/lib",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800"
+        ]
+      }
+    },
+    {
+      "model_name": "yzma-q8",
+      "model": "llama-server/Qwen3.5-0.8B-Q8_0.gguf",
+      "api_base": "engines/yzma/lib/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 16384,
+        "parallel": 1,
+        "port": 8084,
         "lib_path": "engines/yzma/lib",
         "extra_args": [
           "--flash-attn", "on",

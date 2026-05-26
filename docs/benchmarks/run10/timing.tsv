@@ -1,0 +1,10 @@
+idx	tag	wall_s	turn_elapsed	iterations	tool_calls	tg_tok_s	pp_tok_s	resp_chars	status
+0	breathe	1721	28m40.9s	3	2	n/a	n/a	0	empty_response
+1	blink	1201	20m0.5s	2	1	n/a	n/a	684	ok
+2	pot	1926	32m6.1s	4	3	n/a	n/a	0	empty_response
+3	button	1870	31m10.3s	4	3	n/a	n/a	192	ok
+4	pwm_pins	1350	22m30.4s	2	1	n/a	n/a	506	ok
+5	five_volt	1348	22m27.5s	1	0	n/a	n/a	865	ok
+6	mpu_vs_mcu	2181	36m20.2s	1	0	n/a	n/a	1474	ok
+7	led_matrix	1526	25m26.4s	3	2	n/a	n/a	0	empty_response
+8	compile_blink	1479	24m38.6s	3	2	n/a	n/a	122	ok
