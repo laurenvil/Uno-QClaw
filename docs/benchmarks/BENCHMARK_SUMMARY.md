@@ -232,6 +232,23 @@ variance further.
 
 Full report: [run10/q8-9prompt-agentic-benchmark.md](run10/q8-9prompt-agentic-benchmark.md).
 
+### Run 11 — Q8 + `--reasoning off` + `/no_think` (2026-05-27, partial 7/9)
+
+Same model and ctx as Run 10. Added `--reasoning off` to `extra_args` and `/no_think` as first
+line of `SOUL.md`. Run cancelled after prompt 6; led_matrix and compile_blink not executed.
+
+| Metric | Value |
+|---|---|
+| Cold wall (breathe, prompt 0) | **25m55s** (vs 28m41s Run 10, −10%) |
+| Warm mean (prompts 1–6, partial) | **24m12s** (vs 26m39s Run 10, −9.2%) |
+| Success rate | **7/7 ✅** (0 empty_response) |
+| empty_response pattern | **Eliminated** — breathe (compile→upload) passed cleanly |
+
+**Headline finding:** `--reasoning off` + `/no_think` fixes the upload → empty failure mode and
+cuts warm latency ~9% across the board. Recommended as the new standard config for yzma-q8.
+
+Full report: [run11/q8-reasoning-off-benchmark.md](run11/q8-reasoning-off-benchmark.md).
+
 ---
 
 **Next steps (in priority order):**

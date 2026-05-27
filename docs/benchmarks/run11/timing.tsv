@@ -1,0 +1,10 @@
+idx	tag	wall_s	turn_elapsed	iterations	tool_calls	tg_tok_s	pp_tok_s	resp_chars	status
+0	breathe	1555	25m55s	3	2	n/a	n/a	133	ok
+1	blink	1196	19m56s	3	2	n/a	n/a	54	ok
+2	pot	1562	26m02s	3	2	n/a	n/a	135	ok
+3	button	1572	26m12s	4	3	n/a	n/a	126	ok
+4	pwm_pins	1099	18m19s	1	0	n/a	n/a	69	ok
+5	five_volt	1285	21m25s	1	0	n/a	n/a	1206	ok
+6	mpu_vs_mcu	1999	33m19s	1	0	n/a	n/a	1344	ok
+7	led_matrix	—	—	—	—	—	—	—	cancelled
+8	compile_blink	—	—	—	—	—	—	—	cancelled

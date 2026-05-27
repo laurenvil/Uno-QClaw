@@ -1,0 +1,46 @@
+[16:24:16] Run 11 — Q8 9-prompt agentic battery + --reasoning off + /no_think
+[16:24:16] Binary : ./build/qclaw
+[16:24:16] Logs   : docs/benchmarks/run11/raw
+[16:24:16] Model  : yzma-q8 (Qwen3.5-0.8B-Q8_0.gguf, ctx 16384, port 8084)
+[16:24:16] Flags  : --reasoning off (extra_args) + /no_think (SOUL.md)
+[16:24:16] 
+[16:24:16] Killing stale llama-server on port 8084 (ensuring cold start)…
+[16:24:18] Sessions cleared
+[16:24:18] 
+[16:24:18] === Prompt 0: breathe  [COLD — server will start now] ===
+[16:24:18]   Prompt: Make the LED on pin 9 breathe — fade in and out smoothly.
+[16:50:13]   Wall: 1555s | Turn: 1.s | Iters: 0 | Tools: 2 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[16:50:13]   Response (133 chars): Done! The LED on pin 9 is now breathing. The sketch uses `analogWrite` in ascending and descending loops to smoothly fade in and out.
+[16:50:13] 
+[16:50:13] === Prompt 1: blink  [warm server] ===
+[16:50:13]   Prompt: Write a sketch that blinks the built-in LED once per second.
+[17:10:09]   Wall: 1196s | Turn: 1.s | Iters: 0 | Tools: 2 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[17:10:09]   Response (54 chars): Done. The sketch is compiled and flashed to the Uno Q.
+[17:10:09] 
+[17:10:09] === Prompt 2: pot  [warm server] ===
+[17:10:09]   Prompt: Read a potentiometer connected to A0 and print its value to the Serial Monitor.
+[17:36:11]   Wall: 1562s | Turn: 1.s | Iters: 0 | Tools: 2 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[17:36:11]   Response (135 chars): Done. The potentiometer at A0 has been compiled and flashed to the board. The value will be printed to the Serial Monitor in real-time.
+[17:36:11] 
+[17:36:11] === Prompt 3: button  [warm server] ===
+[17:36:11]   Prompt: When a button on pin 2 is pressed, turn on the LED on pin 13; otherwise turn it off.
+[18:02:23]   Wall: 1572s | Turn: 1.s | Iters: 0 | Tools: 3 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[18:02:23]   Response (126 chars): I'll help you create a sketch that turns on the LED on pin 13 when the button on pin 2 is pressed, and turns it off otherwise.
+[18:02:23] 
+[18:02:23] === Prompt 4: pwm_pins  [warm server] ===
+[18:02:23]   Prompt: Which pins on the Uno Q can do PWM?
+[18:20:42]   Wall: 1099s | Turn: 1.s | Iters: 0 | Tools: 0 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[18:20:42]   Response (69 chars): The Uno Q's PWM pins are marked with a tilde (`~`) on the silkscreen.
+[18:20:42] 
+[18:20:42] === Prompt 5: five_volt  [warm server] ===
+[18:20:42]   Prompt: Can I connect a 5V sensor to A0?
+[18:42:08]   Wall: 1285s | Turn: 1.s | Iters: 0 | Tools: 0 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[18:42:08]   Response (25 chars): No. On the Uno Q, pins A0
+[18:42:08] 
+[18:42:08] === Prompt 6: mpu_vs_mcu  [warm server] ===
+[18:42:08]   Prompt: What is the difference between the MPU and the MCU on the Uno Q?
+[19:15:27]   Wall: 1999s | Turn: 1.s | Iters: 0 | Tools: 0 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[19:15:27]   Response (64 chars): The Uno Q is a **dual-chip** board with two distinct processors:
+[19:15:27] 
+[19:15:27] === Prompt 7: led_matrix  [warm server] ===
+[19:15:27]   Prompt: Scroll 'QClaw' across the Uno Q LED matrix and upload it to the board.
