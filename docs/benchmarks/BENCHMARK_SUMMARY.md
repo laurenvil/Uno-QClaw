@@ -249,6 +249,40 @@ cuts warm latency ~9% across the board. Recommended as the new standard config f
 
 Full report: [run11/q8-reasoning-off-benchmark.md](run11/q8-reasoning-off-benchmark.md).
 
+### Run 14 — Q4_0 Final 9-Prompt Agentic Battery + TG/PP Probe (2026-05-27)
+
+Default yzma model (`Qwen_Qwen3.5-0.8B-Q4_0.gguf`, 490 MB, Q4_0) with study-bible flags and
+`--reasoning-budget 800`. First run to capture real TG/PP t/s via direct `/v1/chat/completions`
+timing probe after each agentic call. Run interrupted at prompt 6 by session compaction; resumed
+from warm server — all 9 results valid.
+
+| Metric | Value |
+|---|---|
+| Cold wall (breathe, prompt 0) | **30m48s** (1848s) |
+| Warm mean (prompts 1–8) | **25m30s** (1531s, range 18m58s – 35m55s) |
+| Total inference time | **3h54m55s** (14095s) |
+| Success rate | **8/9 ✅** · 1/9 empty_response (led_matrix, post-upload) |
+| Sketch correctness | **5/5 correct** (breathe, blink, pot, led_matrix, compile_blink) |
+| PP cold | 8.54 t/s |
+| PP warm avg | **11.20 t/s** |
+| TG cold | 2.26 t/s |
+| TG warm avg | **5.07 t/s** |
+| TG warm/cold speedup | **2.24×** |
+
+**TG is memory-bandwidth-bound on LPDDR4X:** warm ceiling is ~5.1–5.2 t/s across all prompt
+types; no flag tuning will push past this on Cortex-A53. PP ceiling is ~11.4 t/s warm. Cold TG
+depressed (2.26 t/s) by 16K-token prefill filling LPDDR4X bandwidth during initial KV cache load.
+
+**`--reasoning-budget 800` vs `--reasoning off`:** Cold time (30m48s) is longer than Run 10 Q8
+cold (28m41s) despite Q4_0 being smaller — extra thinking tokens inflate the cold prefill.
+1/9 empty_response persists. For production use, `--reasoning off --reasoning-budget 0`
+(Run 11 finding) is preferred: eliminates empty_response and reduces warm mean by ~5%.
+
+**ctx 16384 confirmed correct:** sufficient for full skill injection without overflow.
+ctx 8192 overflows at iter 3 on tool-heavy prompts (Run 13).
+
+Full report: [run14/q4-final-benchmark.md](run14/q4-final-benchmark.md).
+
 ---
 
 **Next steps (in priority order):**

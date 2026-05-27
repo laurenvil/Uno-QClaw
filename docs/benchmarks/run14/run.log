@@ -1,0 +1,81 @@
+[08:19:37] Run 14 — Q4_0 yzma study-bible · full 9-prompt agentic battery
+[08:19:37] Binary : ./build/qclaw
+[08:19:37] Logs   : docs/benchmarks/run14/raw
+[08:19:37] Model  : yzma (Qwen_Qwen3.5-0.8B-Q4_0.gguf, 490 MB, ctx 16384, port 8083)
+[08:19:37] Flags  : --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800
+[08:19:37] TG/PP  : measured via /v1/chat/completions timing probe after each prompt
+[08:19:37] 
+[08:19:37] Killing stale llama-server on port 8083…
+[08:19:39] Sessions cleared
+[08:19:39] 
+[08:19:39] === Prompt 0: breathe  [COLD — server will start now] ===
+[08:19:39]   Prompt: Make the LED on pin 9 breathe — fade in and out smoothly.
+[08:50:28]   Running timing probe…
+[08:50:45]   Wall: 1848s (30m48s) | Iters: 0 | Tools: 2 | PP: 8.54 t/s (31 tok) | TG: 2.26 t/s (30 tok) | Status: ok
+[08:50:45]   Response (73 chars): I'll make the LED on pin 9 breathe by compiling and uploading the sketch.
+[08:50:45] 
+[08:50:45] === Prompt 1: blink  [warm server] ===
+[08:50:45]   Prompt: Write a sketch that blinks the built-in LED once per second.
+[09:09:43]   Running timing probe…
+[09:09:52]   Wall: 1138s (18m58s) | Iters: 0 | Tools: 1 | PP: 11.35 t/s (31 tok) | TG: 5.16 t/s (30 tok) | Status: ok
+[09:09:52]   Response (92 chars): Done. The sketch is a 100ms blink on the built-in LED (D13). It uses the canonical template:
+[09:09:52] 
+[09:09:53] === Prompt 2: pot  [warm server] ===
+[09:09:53]   Prompt: Read a potentiometer connected to A0 and print its value to the Serial Monitor.
+[09:35:31]   Running timing probe…
+[09:35:40]   Wall: 1537s (25m37s) | Iters: 0 | Tools: 1 | PP: 11.39 t/s (31 tok) | TG: 5.17 t/s (30 tok) | Status: ok
+[09:35:40]   Response (106 chars): I'll write a sketch that reads a potentiometer connected to A0 and prints its value to the Serial Monitor.
+[09:35:40] 
+[09:35:40] === Prompt 3: button  [warm server] ===
+[09:35:40]   Prompt: When a button on pin 2 is pressed, turn on the LED on pin 13; otherwise turn it off.
+[09:59:44]   Running timing probe…
+[09:59:53]   Wall: 1443s (24m3s) | Iters: 0 | Tools: 0 | PP: 11.44 t/s (31 tok) | TG: 5.16 t/s (30 tok) | Status: ok
+[09:59:53]   Response (88 chars): I'll write a sketch that turns on the LED on pin 13 when the button on pin 2 is pressed.
+[09:59:53] 
+[09:59:53] === Prompt 4: pwm_pins  [warm server] ===
+[09:59:53]   Prompt: Which pins on the Uno Q can do PWM?
+[10:21:11]   Running timing probe…
+[10:21:20]   Wall: 1277s (21m17s) | Iters: 0 | Tools: 0 | PP: 10.71 t/s (31 tok) | TG: 4.86 t/s (30 tok) | Status: ok
+[10:21:20]   Response (101 chars): Based on the identity document and the skills reference files, the PWM-capable pins on the Uno Q are:
+[10:21:20] 
+[10:21:20] === Prompt 5: five_volt  [warm server] ===
+[10:21:20]   Prompt: Can I connect a 5V sensor to A0?
+[10:43:54]   Running timing probe…
+[10:44:04]   Wall: 1354s (22m34s) | Iters: 0 | Tools: 0 | PP: 10.50 t/s (31 tok) | TG: 4.79 t/s (30 tok) | Status: ok
+[10:44:04]   Response (54 chars): No, you cannot connect a 5V sensor to A0 on the Uno Q.
+[10:44:04] 
+[10:44:04] === Prompt 6: mpu_vs_mcu  [warm server] ===
+[10:44:04]   Prompt: What is the difference between the MPU and the MCU on the Uno Q?
+[14:16:51] Run 14 RESUME — prompts 6-8 (mpu_vs_mcu, led_matrix, compile_blink)
+[14:16:51] Server: warm on port 8083 (PID 194276)
+[14:16:51] 
+[14:16:51] === Prompt 6: mpu_vs_mcu  [warm server] ===
+[14:16:51]   Prompt: What is the difference between the MPU and the MCU on the Uno Q?
+[14:52:47]   Running timing probe…
+[14:52:56]   Wall: 2155s (35m55s) | Iters: 0 | Tools: 0 | PP: 11.39 t/s (31 tok) | TG: 5.05 t/s (30 tok) | Status: ok
+[14:52:56]   Response (127 chars): Based on the documentation, here's the key difference between the **MPU (Linux side)** and **MCU (Arduino side)** on the Uno Q:
+[14:52:56] 
+[14:52:56] === Prompt 7: led_matrix  [warm server] ===
+[14:52:56]   Prompt: Scroll 'QClaw' across the Uno Q LED matrix and upload it to the board.
+[15:24:17]   Running timing probe…
+[15:24:26]   Wall: 1881s (31m21s) | Iters: 0 | Tools: 2 | PP: 11.35 t/s (31 tok) | TG: 5.20 t/s (30 tok) | Status: empty_response
+[15:24:26]   Response (75 chars): I'll scroll "QClaw" across the Uno Q LED matrix and upload it to the board.
+[15:24:26] 
+[15:24:26] === Prompt 8: compile_blink  [warm server] ===
+[15:24:26]   Prompt: Write a sketch that blinks the built-in LED once per second, then compile and upload it to the board.
+[15:48:48]   Running timing probe…
+[15:48:57]   Wall: 1462s (24m22s) | Iters: 0 | Tools: 2 | PP: 11.46 t/s (31 tok) | TG: 5.13 t/s (30 tok) | Status: ok
+[15:48:57]   Response (113 chars): I'll write a simple sketch that blinks the built-in LED once per second, then compile and upload it to the board.
+[15:48:57] 
+[15:48:57] === Run 14 resume complete ===
+[15:48:57] 
+[15:48:57] idx  tag            wall_s  wall_fmt  iterations  tool_calls  pp_tok_s  tg_tok_s  probe_pp_n  probe_tg_n  resp_chars  status
+0    breathe        1848    30m48s    0           2           8.54      2.26      31          30          73          ok
+1    blink          1138    18m58s    0           1           11.35     5.16      31          30          92          ok
+2    pot            1537    25m37s    0           1           11.39     5.17      31          30          106         ok
+3    button         1443    24m3s     0           0           11.44     5.16      31          30          88          ok
+4    pwm_pins       1277    21m17s    0           0           10.71     4.86      31          30          101         ok
+5    five_volt      1354    22m34s    0           0           10.50     4.79      31          30          54          ok
+6    mpu_vs_mcu     2155    35m55s    0           0           11.39     5.05      31          30          127         ok
+7    led_matrix     1881    31m21s    0           2           11.35     5.20      31          30          75          empty_response
+8    compile_blink  1462    24m22s    0           2           11.46     5.13      31          30          113         ok
