@@ -1,0 +1,4 @@
+idx	tag	wall_s	turn_elapsed	iterations	tool_calls	tg_tok_s	pp_tok_s	resp_chars	status
+0	breathe	1473	1.s	0	2	n/a	n/a	0	error(1)
+1	blink	1086	1.s	0	1	n/a	n/a	36	ok
+2	pot	1427	1.s	0	1	n/a	n/a	146	ok

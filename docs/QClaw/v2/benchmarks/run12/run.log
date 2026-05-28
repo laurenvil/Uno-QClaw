@@ -1,0 +1,20 @@
+[04:48:36] Run 12 — UD-Q4_K_XL 9-prompt agentic battery · ctx 12000
+[04:48:36] Binary : ./build/qclaw
+[04:48:36] Logs   : docs/benchmarks/run12/raw
+[04:48:36] Model  : yzma-q4kxl (Qwen3.5-0.8B-UD-Q4_K_XL.gguf, 559 MB, ctx 9000, port 8084)
+[04:48:36] Flags  : --reasoning off --reasoning-budget 0 --temp 0.3 --top-p 0.9 --top-k 20 --min-p 0.0 --repeat-penalty 1.0
+[04:48:36] 
+[04:48:36] Sessions cleared
+[04:48:36] 
+[04:48:36] === Prompt 0: breathe  [COLD — server will start now] ===
+[04:48:36]   Prompt: Make the LED on pin 9 breathe — fade in and out smoothly.
+[05:15:20]   Wall: 1603s | Turn: 1.s | Iters: 0 | Tools: 2 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[05:15:20]   Response (49 chars): Done. The LED on pin 9 will now breathe smoothly.
+[05:15:20] 
+[05:15:20] === Prompt 1: blink  [warm server] ===
+[05:15:20]   Prompt: Write a sketch that blinks the built-in LED once per second.
+[05:33:05]   Wall: 1065s | Turn: 1.s | Iters: 0 | Tools: 1 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[05:33:06]   Response (141 chars): The sketch is compiled successfully. It uses pin D13 (LED_BUILTIN) and cycles HIGH for 1 second, then LOW for 1 second, repeating 1000 times
+[05:33:06] 
+[05:33:06] === Prompt 2: pot  [warm server] ===
+[05:33:06]   Prompt: Read a potentiometer connected to A0 and print its value to the Serial Monitor.

@@ -1,0 +1,25 @@
+[06:05:53] Run 13 — UD-Q4_K_XL · yzma Q4 flags · ctx 8192
+[06:05:53] Binary : ./build/qclaw
+[06:05:53] Logs   : docs/benchmarks/run13/raw
+[06:05:53] Model  : yzma-q4kxl (Qwen3.5-0.8B-UD-Q4_K_XL.gguf, 559 MB, ctx 8192, port 8084)
+[06:05:53] Flags  : --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning off --reasoning-budget 0
+[06:05:53] 
+[06:05:53] Sessions cleared
+[06:05:53] 
+[06:05:53] === Prompt 0: breathe  [COLD — server will start now] ===
+[06:05:53]   Prompt: Make the LED on pin 9 breathe — fade in and out smoothly.
+[06:30:26]   Wall: 1473s | Turn: 1.s | Iters: 0 | Tools: 2 | TG: n/a t/s | PP: n/a t/s | Status: error(1)
+[06:30:26]   Response (0 chars): 
+[06:30:26] 
+[06:30:26] === Prompt 1: blink  [warm server] ===
+[06:30:26]   Prompt: Write a sketch that blinks the built-in LED once per second.
+[06:48:33]   Wall: 1086s | Turn: 1.s | Iters: 0 | Tools: 1 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[06:48:33]   Response (36 chars): The sketch is compiled successfully.
+[06:48:33] 
+[06:48:33] === Prompt 2: pot  [warm server] ===
+[06:48:33]   Prompt: Read a potentiometer connected to A0 and print its value to the Serial Monitor.
+[07:12:21]   Wall: 1427s | Turn: 1.s | Iters: 0 | Tools: 1 | TG: n/a t/s | PP: n/a t/s | Status: ok
+[07:12:21]   Response (146 chars): Done. The sketch reads the potentiometer at A0, prints its analogRead value to Serial Monitor, and uses a 100ms delay to keep the output rea
+[07:12:21] 
+[07:12:21] === Prompt 3: button  [warm server] ===
+[07:12:21]   Prompt: When a button on pin 2 is pressed, turn on the LED on pin 13; otherwise turn it off.
