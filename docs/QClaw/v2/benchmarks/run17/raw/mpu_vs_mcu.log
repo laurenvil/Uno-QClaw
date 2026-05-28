@@ -1,0 +1,35 @@
+
+[1;38;2;62;93;185m██╗   ██╗ ███╗   ██╗  ██████╗   ██████╗ [1;38;2;213;70;70m ██████╗██╗      █████╗ ██╗    ██╗
+[1;38;2;62;93;185m██║   ██║ ████╗  ██║ ██╔═══██╗ ██╔═══██╗[1;38;2;213;70;70m██╔════╝██║     ██╔══██╗██║    ██║
+[1;38;2;62;93;185m██║   ██║ ██╔██╗ ██║ ██║   ██║ ██║   ██║[1;38;2;213;70;70m██║     ██║     ███████║██║ █╗ ██║
+[1;38;2;62;93;185m██║   ██║ ██║╚██╗██║ ██║   ██║ ██║▄▄ ██║[1;38;2;213;70;70m██║     ██║     ██╔══██║██║███╗██║
+[1;38;2;62;93;185m╚██████╔╝ ██║ ╚████║ ╚██████╔╝ ╚██████╔╝[1;38;2;213;70;70m╚██████╗███████╗██║  ██║╚███╔███╔╝
+[1;38;2;62;93;185m ╚═════╝  ╚═╝  ╚═══╝  ╚═════╝   ╚══▀▀═╝ [1;38;2;213;70;70m ╚═════╝╚══════╝╚═╝  ╚═╝ ╚══╝╚══╝
+ [0m
+[90m06:58:29[0m [32mINF[0m [1magent  registry.go:38 (agent.NewAgentRegistry)[0m[36m >[0m [1mCreated implicit main agent (no agents.list configured)[0m
+[90m06:58:29[0m [32mINF[0m [1magent  helpers.go:114 (agent.agentCmd)[0m[36m >[0m [1mAgent initialized[0m [36mskills_available=[0m15 [36mskills_total=[0m15 [36mtools_count=[0m8
+[K[90m06:58:29[0m [32mINF[0m [1mllamaserver provider.go:384 (llamaserver.(*Provider).ensureServer)[0m[36m >[0m [1mStarting persistent llama-server[0m [36mbinary=[0mengines/llamacli/mpu/llama-server [36mmodel=[0mQwen_Qwen3.5-0.8B-Q4_0.gguf [36mport=[0m8086
+[K⠋ QClaw is thinking… (0s)[K⠙ QClaw is thinking… (0s)[K⠹ QClaw is thinking… (0s)ggml_opencl: selected platform: 'rusticl'
+
+ggml_opencl: device: 'FD702 (OpenCL 3.0 )'
+ggml_opencl: OpenCL driver: 25.2.6-1~bpo13+1
+ggml_opencl: vector subgroup broadcast support: false
+ggml_opencl: device FP16 support: true
+ggml_opencl: device does not support subgroups (cl_khr_subgroups or cl_intel_subgroups) (note that subgroups is an optional feature in OpenCL 3.0)
+ggml_opencl: drop unsupported device.
+[K⠸ QClaw is thinking… (0s)[K⠼ QClaw is thinking… (1s)[90m06:58:30[0m [31mERR[0m [1magent  loop.go:1342 (agent.(*AgentLoop).runLLMIteration)[0m[36m >[0m [1mLLM call failed[0m [36merror=[0m[31m[1m"llama-server returned 400: {\"error\":{\"code\":400,\"message\":\"request (10345 tokens) exceeds the available context size (9216 tokens), try increasing it\",\"type\":\"exceed_context_size_error\",\"n_prompt_tokens\":10345,\"n_ctx\":9216}}"[0m[0m [36magent_id=[0mmain [36miteration=[0m1 [36mmodel=[0mQwen_Qwen3.5-0.8B-Q4_0.gguf
+[KError: error processing message: LLM call failed after retries: llama-server returned 400: {"error":{"code":400,"message":"request (10345 tokens) exceeds the available context size (9216 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":10345,"n_ctx":9216}}
+Usage:
+  qclaw agent [flags]
+
+Flags:
+  -d, --debug            Enable debug logging
+  -h, --help             help for agent
+  -m, --message string   Send a single message (non-interactive mode)
+      --model string     Model to use
+  -s, --session string   Session key (default "cli:default")
+
+
+real	0m0.590s
+user	0m0.104s
+sys	0m0.040s

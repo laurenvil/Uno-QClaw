@@ -5,7 +5,7 @@
       "workspace": "~/.qclaw/workspace",
       "restrict_to_workspace": false,
       "allow_read_outside_workspace": true,
-      "model_name": "yzma",
+      "model_name": "llamacli-mpu",
       "max_tokens": 2048,
       "temperature": 0.3,
       "max_tool_iterations": 8,
@@ -14,6 +14,29 @@
     }
   },
   "model_list": [
+    {
+      "model_name": "llamacli-mpu",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "engines/llamacli/mpu/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 9000,
+        "parallel": 1,
+        "port": 8086,
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
+        ]
+      }
+    },
     {
       "model_name": "yzma",
       "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",

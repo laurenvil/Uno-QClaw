@@ -1,0 +1,10 @@
+idx	tag	wall_s	wall_fmt	iterations	tool_calls	pp_tok_s	tg_tok_s	probe_pp_n	probe_tg_n	resp_chars	status
+0	breathe	1612	26m52s	0	0	10.92	4.82	31	30	149	ok
+1	blink	1349	22m29s	0	1	11.48	5.14	31	30	90	ok
+2	pot	1435	23m55s	0	0	11.50	5.11	31	30	121	ok
+3	button	1628	27m8s	0	1	11.41	5.08	31	30	75	ok
+4	pwm_pins	1128	18m48s	0	0	11.42	5.13	31	30	150	ok
+5	five_volt	1364	22m44s	0	0	11.51	5.12	31	30	81	ok
+6	mpu_vs_mcu	1	0m1s	0	0	8.51	4.15	31	30	0	error(1)
+7	led_matrix	1634	27m14s	0	1	11.30	5.03	31	30	82	empty_response
+8	compile_blink	1309	21m49s	0	1	11.51	5.04	31	30	103	ok
