@@ -72,8 +72,11 @@ LD_LIBRARY_PATH=engines/yzma/lib \
   engines/yzma/lib/llama-server \
     -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
     --host 127.0.0.1 --port 8083 \
-    -t 4 -c 8192 -np 1 \
-    --reasoning off --jinja --log-disable &
+    -t 4 -c 9000 -np 1 \
+    --reasoning off --jinja --log-disable \
+    --flash-attn on --mlock \
+    --cache-type-k q8_0 --cache-type-v q8_0 \
+    --reasoning-budget 800 --repeat-penalty 1.1 --repeat-last-n 64 &
 
 # Wait for health (up to 5 min cold)
 until curl -sf http://127.0.0.1:8083/health; do sleep 5; done
@@ -116,8 +119,10 @@ On first call the provider logs the spawn command:
 ```
 llamaserver: starting server: engines/yzma/lib/llama-server \
   -m /home/arduino/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-  --host 127.0.0.1 --port 8083 -t 4 -c 8192 -np 1 \
-  --reasoning off --jinja --log-disable
+  --host 127.0.0.1 --port 8083 -t 4 -c 9000 -np 1 \
+  --reasoning off --jinja --log-disable \
+  --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 \
+  --reasoning-budget 800 --repeat-penalty 1.1 --repeat-last-n 64
 llamaserver: server ready on port 8083
 ```
 
@@ -168,7 +173,7 @@ The health-check loop timed out (default 30 polls × 1 s = 30 s). On a cold Uno 
 
 ### 4.4 HTTP 500 `"Context size has been exceeded"`
 
-The `--parallel` flag defaulted to auto (≥2) and divided ctx_size per slot. With `ctx_size=8192` and 4 slots the effective context is ~2048 — too small for the QClaw system prompt. Fix: ensure `"parallel": 1` is in the `extra_body` of the engine entry.
+The `--parallel` flag defaulted to auto (≥2) and divided ctx_size per slot. With `ctx_size=9000` and 4 slots the effective context is ~2250 — too small for the QClaw system prompt. Fix: ensure `"parallel": 1` is in the `extra_body` of the engine entry. Also note that some complex prompts (e.g. mpu_vs_mcu) generate 10,000+ tokens of system context — bump `ctx_size` to ≥11,000 if you hit this on those prompts.
 
 ### 4.5 `signal: killed` during inference
 
@@ -224,4 +229,4 @@ The server has no debug endpoint, but `GET /props` returns the loaded model name
 | Agentic path (non-TUI) | `pkg/agent/loop.go` | `ProcessAgenticWithProgressStream` |
 | TUI chat design rationale | `docs/QClaw/development/tui-chat-design.md` | — |
 | Engine binary + .so files | `engines/yzma/lib/` | `llama-server`, `libggml-*.so` |
-| Benchmark numbers | `docs/benchmarks/BENCHMARK_SUMMARY.md` | Runs 6–9 |
+| Benchmark numbers | `docs/QClaw/v2/benchmarks/BENCHMARK_SUMMARY.md` | All runs |

@@ -4,9 +4,11 @@ Step-by-step guide to run QClaw on an Arduino Uno Q — from a fresh board to a 
 
 **Current branch: `QClaw-v2`** — uses the **persistent `pkg/providers/llamaserver`** provider. One llama-server child process stays up across requests; the engine binary and flags are config-only (no rebuild). The default engine is `yzma` — self-contained at `engines/yzma/lib/`, no build required:
 
-| Engine | Binary | Status |
-|---|---|---|
-| `yzma` ⭐ | `engines/yzma/lib/llama-server` (b9127, 9.0 MB) | Default; CPU-only, ARMv8.0 — works on fresh clone |
+| Engine | Binary | Model | Status |
+|---|---|---|---|
+| `yzma` ⭐ | `engines/yzma/lib/llama-server` (b9127, 9.0 MB) | Q4_0 ~490 MB | Default; CPU-only, ARMv8.0 |
+| `yzma-q4kxl` | same binary (port 8084) | Q4_K_XL | Higher quality |
+| `yzma-q8` | same binary (port 8085) | Q8_0 | Highest fidelity |
 
 Two execution paths share the same model, system prompt, and 15-skill tree:
 
@@ -143,16 +145,18 @@ Each engine is one object in `model_list[]`. The yzma entry is the canonical exa
   "extra_body": {
     "models_dir":  "~/models",                         // → WithModelsDir   (model lookup root)
     "threads":     4,                                  // → WithThreads     (-t)
-    "ctx_size":    8192,                               // → WithContextSize (-c)
+    "ctx_size":    9000,                               // → WithContextSize (-c)
     "parallel":    1,                                  // → WithParallel    (-np) — pin to 1!
     "port":        8083,                               // → WithPort        loopback
-    "lib_path":    "yzma/lib",                         // → WithLibraryPath (LD_LIBRARY_PATH prepend)
+    "lib_path":    "engines/yzma/lib",                 // → WithLibraryPath (LD_LIBRARY_PATH prepend)
     "extra_args": [                                    // → WithExtraArgs   (verbatim flags)
       "--flash-attn", "on",
       "--mlock",
       "--cache-type-k", "q8_0",
       "--cache-type-v", "q8_0",
-      "--reasoning-budget", "800"
+      "--reasoning-budget", "800",
+      "--repeat-penalty", "1.1",
+      "--repeat-last-n", "64"
     ]
   }
 }
@@ -171,14 +175,14 @@ These are not configurable — `pkg/providers/llamaserver/provider.go` injects t
 Then any `extra_args` from config are appended verbatim. The full spawn command for `qclaw direct --model yzma` with the recommended `extra_args`:
 
 ```
-yzma/lib/llama-server \
+engines/yzma/lib/llama-server \
   -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
   --host 127.0.0.1 --port 8083 \
-  -t 4 -c 8192 -np 1 \
+  -t 4 -c 9000 -np 1 \
   --reasoning off --jinja --log-disable \
   --flash-attn on --mlock \
   --cache-type-k q8_0 --cache-type-v q8_0 \
-  --reasoning-budget 800
+  --reasoning-budget 800 --repeat-penalty 1.1 --repeat-last-n 64
 ```
 
 ### Why `parallel: 1` matters
@@ -196,7 +200,7 @@ Five flags from `docs/QClaw/development/architecture-study-bible.md` are wired u
 | `--cache-type-k q8_0` / `-v q8_0` | Quantize KV cache to int8 — ~halves KV RAM vs fp16 |
 | `--reasoning-budget 800` | Cap `<think>` tokens (belt-and-braces with `/no_think` in SOUL.md) |
 
-**Caveat:** Run 7 measured these flags as a **53 s cold regression** on yzma (12m43.2s vs 11m49.6s baseline). `--mlock` pays the full model-pin cost up front rather than mmap-on-access, and `--flash-attn on` lacks an ARMv8.0 fast-path that beats the scalar code. They are better candidates for a warm steady-state on a long-lived gateway. To disable them, remove the `extra_args` array from the yzma entry. See [`docs/benchmarks/run7/yzma-optimized-benchmark.md`](../../benchmarks/run7/yzma-optimized-benchmark.md).
+**Caveat:** Run 7 measured these flags as a **53 s cold regression** on yzma (12m43.2s vs 11m49.6s baseline). `--mlock` pays the full model-pin cost up front rather than mmap-on-access, and `--flash-attn on` lacks an ARMv8.0 fast-path that beats the scalar code. They are better candidates for a warm steady-state on a long-lived gateway. To disable them, remove the `extra_args` array from the yzma entry. See [`docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md`](../v2/benchmarks/run7/yzma-optimized-benchmark.md).
 
 ### Adding a new engine
 
@@ -367,7 +371,7 @@ The `ExecStopPost` is important: if the gateway crashes or is restarted, the orp
    ```bash
    LD_LIBRARY_PATH=engines/yzma/lib engines/yzma/lib/llama-server \
      -m ~/models/Qwen_Qwen3.5-0.8B-Q4_0.gguf \
-     --host 127.0.0.1 --port 8083 -t 4 -c 8192 -np 1 \
+     --host 127.0.0.1 --port 8083 -t 4 -c 9000 -np 1 \
      --reasoning off --jinja
    # In another shell:
    curl -s http://127.0.0.1:8083/health    # expect {"status":"ok"}
@@ -386,7 +390,7 @@ The `ExecStopPost` is important: if the gateway crashes or is restarted, the orp
 
 **`"Context size has been exceeded"` HTTP 500**
 
-This always means `ctx_size / parallel_slots < (system_prompt + user_message + generation_budget)`. Either set `parallel: 1` in the engine's `extra_body` (provider default) or bump `ctx_size` to `8192 × N` if you really want N slots. The root-cause analysis is in `docs/benchmarks/run7/yzma-optimized-benchmark.md`.
+This always means `ctx_size / parallel_slots < (system_prompt + user_message + generation_budget)`. Either set `parallel: 1` in the engine's `extra_body` (provider default) or bump `ctx_size`. Some prompts (mpu_vs_mcu) require >10,000 tokens of context — use `ctx_size: 11000` or higher if those overflow at 9000. The root-cause analysis is in `docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md`.
 
 **Sketch compilation fails**
 
@@ -414,12 +418,13 @@ make qclaw         # restart
 
 ## Verifying Performance
 
-Target numbers for the QClaw-v2 `llamaserver` track on `Qwen_Qwen3.5-0.8B-Q4_0`, `-c 8192 -t 4 -np 1 --reasoning off --jinja`, `/no_think` active in `SOUL.md` (pwm_pins prompt, Run 6 + Run 7):
+Target numbers for the QClaw-v2 `llamaserver` track on `Qwen_Qwen3.5-0.8B-Q4_0`, `-c 9000 -t 4 -np 1 --reasoning off --jinja` + run-17 flags, `/no_think` active in `SOUL.md`:
 
 | Engine | Wall (cold) | Notes |
 |---|---|---|
-| `yzma` ⭐ baseline | **11m49.6s** | Fastest; CPU ARMv8.0 |
+| `yzma` ⭐ baseline | **11m49.6s** | Fastest; CPU ARMv8.0, Run 7 (no repeat-penalty flags) |
 | `yzma` + study-bible flags | 12m43.2s | +53 s cold regression; better on warm steady-state |
+| llamacli-mpu (Run 17) | ~23m avg warm | 5.1 t/s TG warm; 7/9 prompts ok (ctx overflow on mpu_vs_mcu) |
 
 For warm follow-ups within the same QClaw process, the persistent server stays up so subsequent turns skip the cold model load entirely — only prefill (system prompt + new user turn) and decode are paid.
 
@@ -433,4 +438,4 @@ rm -f ~/.qclaw/workspace/sessions/*
 time qclaw direct --model yzma -m "Which pins on the Uno Q can do PWM?"
 ```
 
-The full benchmark history is in [`docs/benchmarks/BENCHMARK_SUMMARY.md`](../../benchmarks/BENCHMARK_SUMMARY.md).
+The full benchmark history is in [`docs/QClaw/v2/benchmarks/BENCHMARK_SUMMARY.md`](../v2/benchmarks/BENCHMARK_SUMMARY.md).

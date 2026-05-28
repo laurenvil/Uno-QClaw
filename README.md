@@ -200,7 +200,7 @@ Config layout (`config/qclaw.config.json` and runtime `~/.qclaw/config.json`):
 ```jsonc
 "model_list": [
   {
-    "model_name":      "yzma",
+    "model_name":      "yzma",                            // ⭐ default — Q4_0
     "model":           "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
     "api_base":        "engines/yzma/lib/llama-server",   // relative to repo root
     "api_key":         "local",
@@ -208,15 +208,44 @@ Config layout (`config/qclaw.config.json` and runtime `~/.qclaw/config.json`):
     "extra_body": {
       "models_dir": "~/models",
       "threads":    4,
-      "ctx_size":   8192,
+      "ctx_size":   9000,
       "parallel":   1,                                    // pin to 1 — keep full ctx per request
       "port":       8083,
       "lib_path":   "engines/yzma/lib",                   // → LD_LIBRARY_PATH prepend
       "extra_args": [
         "--flash-attn", "on", "--mlock",
         "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
-        "--reasoning-budget", "800"
+        "--reasoning-budget", "800",
+        "--repeat-penalty", "1.1", "--repeat-last-n", "64"
       ]
+    }
+  },
+  {
+    "model_name":      "yzma-q4kxl",                     // Q4_K_XL — higher quality
+    "model":           "llama-server/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+    "api_base":        "engines/yzma/lib/llama-server",
+    "api_key":         "local",
+    "request_timeout": 1200,
+    "extra_body": {
+      "models_dir": "~/models", "threads": 4, "ctx_size": 9000,
+      "parallel": 1, "port": 8084, "lib_path": "engines/yzma/lib",
+      "extra_args": ["--flash-attn", "on", "--mlock",
+        "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
+        "--reasoning-budget", "800", "--repeat-penalty", "1.1", "--repeat-last-n", "64"]
+    }
+  },
+  {
+    "model_name":      "yzma-q8",                        // Q8_0 — highest fidelity
+    "model":           "llama-server/Qwen3.5-0.8B-Q8_0.gguf",
+    "api_base":        "engines/yzma/lib/llama-server",
+    "api_key":         "local",
+    "request_timeout": 1200,
+    "extra_body": {
+      "models_dir": "~/models", "threads": 4, "ctx_size": 9000,
+      "parallel": 1, "port": 8085, "lib_path": "engines/yzma/lib",
+      "extra_args": ["--flash-attn", "on", "--mlock",
+        "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
+        "--reasoning-budget", "800", "--repeat-penalty", "1.1", "--repeat-last-n", "64"]
     }
   }
 ]
@@ -245,9 +274,11 @@ Then any `extra_args` from config are appended.
 
 ### Engine
 
-| Engine key | Binary | Build / size | Status |
-|---|---|---|---|
-| `yzma` ⭐ | `engines/yzma/lib/llama-server` | b9127 a9883db8e, dyn 9.0 MB | ✅ Default; CPU-only (ARMv8.0 dispatch) |
+| Engine key | Binary | Build / size | Model | Status |
+|---|---|---|---|---|
+| `yzma` ⭐ | `engines/yzma/lib/llama-server` | b9127 a9883db8e, dyn 9.0 MB | Q4_0 ~490 MB | ✅ Default; CPU-only (ARMv8.0) |
+| `yzma-q4kxl` | `engines/yzma/lib/llama-server` | same binary, port 8084 | Q4_K_XL | Higher quality, larger quant |
+| `yzma-q8` | `engines/yzma/lib/llama-server` | same binary, port 8085 | Q8_0 | Highest fidelity |
 
 The engine is selected by `agents.defaults.model_name` in `~/.qclaw/config.json`, or overridden per-call with `--model yzma`. Additional engines can be added by dropping a `llama-server` binary and a `model_list` entry — no Go rebuild needed.
 
@@ -261,8 +292,10 @@ The architecture study bible documents five tunables for ARM CPU inference:
 | `--mlock` | Pins model weights in RAM (no swap) | Pays full pinning cost up front on cold runs |
 | `--cache-type-k q8_0` / `-v q8_0` | Quantize KV cache to int8 — halves KV RAM | Mild per-token quant overhead |
 | `--reasoning-budget 800` | Cap `<think>` tokens | Belt-and-braces with `/no_think` in SOUL.md |
+| `--repeat-penalty 1.1` | Penalize repeated tokens | Reduces output loops on small models |
+| `--repeat-last-n 64` | Window for repeat penalty | 64-token lookback |
 
-These are not a free win. Run 7 measured a **53 s cold regression** on yzma (12m43s vs 11m49.6s baseline) — mlock and flash-attn pay upfront costs that aren't recouped in a single cold call. They are better candidates for a long-lived persistent server in warm steady-state. See [`docs/benchmarks/run7/yzma-optimized-benchmark.md`](docs/benchmarks/run7/yzma-optimized-benchmark.md).
+These are not a free win. Run 7 measured a **53 s cold regression** on yzma (12m43s vs 11m49.6s baseline) — mlock and flash-attn pay upfront costs that aren't recouped in a single cold call. They are better candidates for a long-lived persistent server in warm steady-state. See [`docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md`](docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md).
 
 The pre-router (`pkg/agent/skill_preload.go`) scans the user message against 23 keyword regex rules spanning 15 skills. Each match inlines the corresponding `SKILL.md` and reference files into the system prompt before the LLM call — the model never has to call `read_file` for known skill content.
 
@@ -283,7 +316,23 @@ Everything runs locally on the QRB2210 over a 127.0.0.1 loopback — the `llamas
 
 ## Benchmarks (Arduino Uno Q)
 
-Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `-c 8192 -t 4 -np 1 --reasoning off --jinja` · QClaw-v2 persistent llama-server.
+Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `-c 9000 -t 4 -np 1 --reasoning off --jinja` + full run-17 flags · QClaw-v2 persistent llama-server.
+
+### Agentic Battery — 9-prompt warm TG (Run 17, llamacli-mpu)
+
+| Prompt | Wall | Tool calls | TG (t/s) | Status |
+|---|---|---|---|---|
+| breathe | 26m52s | 0 | 4.82 | ✅ ok |
+| blink | 22m29s | 1 | 5.14 | ✅ ok |
+| pot | 23m55s | 0 | 5.11 | ✅ ok |
+| button | 27m8s | 1 | 5.08 | ✅ ok |
+| pwm_pins | 18m48s | 0 | 5.13 | ✅ ok |
+| five_volt | 22m44s | 0 | 5.12 | ✅ ok |
+| mpu_vs_mcu | 1s | — | — | ⚠ ctx overflow (10,345 tok > 9,216 budget) |
+| led_matrix | 27m14s | 1 | 5.03 | ⚠ empty_response |
+| compile_blink | 21m49s | 1 | 5.04 | ✅ ok |
+
+Warm TG steady-state: **~5.1 t/s** on Cortex-A53 × 4 (LPDDR4X bandwidth ceiling). The mpu_vs_mcu context overflow is a hard budget problem — that prompt requires 10,345 tokens, exceeding the 9,216-token KV window at ctx 9000. Bump `ctx_size` to ≥11,000 to fix it.
 
 ### Engine Benchmarks — pwm_pins cold (Run 7)
 
@@ -292,9 +341,7 @@ Model: `Qwen_Qwen3.5-0.8B-Q4_0.gguf` · `-c 8192 -t 4 -np 1 --reasoning off --ji
 | `yzma` ⭐ baseline | **11m49.6s** | ✅ 241 chars | Fastest; CPU ARMv8.0 |
 | `yzma` + study-bible flags | 12m43.2s | ✅ 146 chars | +53 s cold regression; better on warm steady-state |
 
-The study-bible flags (`--flash-attn on --mlock --cache-type-k/v q8_0`) pay upfront costs (mlock pins at load, flash-attn has no ARMv8.0 fast-path) that aren't recouped in a single cold call. They are included in the default config because they pay off across a long-lived gateway session.
-
-Full write-up: [`docs/benchmarks/run7/yzma-optimized-benchmark.md`](docs/benchmarks/run7/yzma-optimized-benchmark.md) · full history: [`docs/benchmarks/BENCHMARK_SUMMARY.md`](docs/benchmarks/BENCHMARK_SUMMARY.md)
+Full write-up: [`docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md`](docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md) · full history: [`docs/QClaw/v2/benchmarks/BENCHMARK_SUMMARY.md`](docs/QClaw/v2/benchmarks/BENCHMARK_SUMMARY.md)
 
 ### Token economy
 
@@ -369,8 +416,8 @@ Uno-QClaw/  (branch: QClaw-v2)
 │   └── bench-llamaserver-provider.sh # llama-server bench
 ├── assets/qclaw-logo.svg
 ├── docs/
-│   ├── QClaw/                # Technical references (see below)
-│   └── benchmarks/           # Runs 1–7, BENCHMARK_SUMMARY.md
+│   └── QClaw/                # Technical references + benchmarks (see below)
+│       └── v2/benchmarks/    # All benchmark runs + BENCHMARK_SUMMARY.md
 └── Makefile
 ```
 
@@ -387,7 +434,7 @@ Uno-QClaw/  (branch: QClaw-v2)
 | `docs/QClaw/whitepaper.md` | Architecture and evaluation whitepaper |
 | `docs/QClaw/capability-integration.md` | Skill, reference, and tool integration record |
 | `docs/QClaw/mcu-communication-whitepaper.md` | MPU↔MCU compile/flash pipeline deep dive |
-| `docs/benchmarks/BENCHMARK_SUMMARY.md` | All benchmark runs with engine comparisons |
+| `docs/QClaw/v2/benchmarks/BENCHMARK_SUMMARY.md` | All benchmark runs with engine comparisons |
 
 ---
 

@@ -785,16 +785,18 @@ The QClaw-v2 inference path is `pkg/providers/llamaserver`. It owns the lifecycl
   "extra_body": {
     "models_dir":  "~/models",                         // → WithModelsDir
     "threads":     4,                                  // → WithThreads
-    "ctx_size":    8192,                               // → WithContextSize
+    "ctx_size":    9000,                               // → WithContextSize
     "parallel":    1,                                  // → WithParallel
     "port":        8083,                               // → WithPort
-    "lib_path":    "yzma/lib",                         // → WithLibraryPath
+    "lib_path":    "engines/yzma/lib",                 // → WithLibraryPath
     "extra_args": [                                    // → WithExtraArgs (verbatim)
       "--flash-attn", "on",
       "--mlock",
       "--cache-type-k", "q8_0",
       "--cache-type-v", "q8_0",
-      "--reasoning-budget", "800"
+      "--reasoning-budget", "800",
+      "--repeat-penalty", "1.1",
+      "--repeat-last-n", "64"
     ]
   }
 }
@@ -826,14 +828,18 @@ Then any `extra_args` from config are appended.
 | `--mlock` | Pin model weights in RAM (no swap, no eviction) | Pays full pinning cost up front on cold runs |
 | `--cache-type-k q8_0` / `-v q8_0` | Quantize KV cache to int8 — halves KV RAM vs fp16 | Mild per-token quant overhead |
 | `--reasoning-budget 800` | Cap `<think>` tokens | Belt-and-braces with `/no_think` in SOUL.md |
+| `--repeat-penalty 1.1` | Penalize repeated tokens | Reduces output loops on small models |
+| `--repeat-last-n 64` | Repeat-penalty lookback window | 64-token window |
 
-**Caveat from Run 7:** these flags add a **53 s cold regression** on yzma (12m43.2s vs 11m49.6s baseline). `--mlock` and `--flash-attn on` pay upfront costs not recouped in a single cold call. They are better candidates for a warm steady-state on a long-lived `qclaw gateway` process. See `docs/benchmarks/run7/yzma-optimized-benchmark.md`.
+**Caveat from Run 7:** these flags add a **53 s cold regression** on yzma (12m43.2s vs 11m49.6s baseline). `--mlock` and `--flash-attn on` pay upfront costs not recouped in a single cold call. They are better candidates for a warm steady-state on a long-lived `qclaw gateway` process. See `docs/QClaw/v2/benchmarks/run7/yzma-optimized-benchmark.md`.
 
 ### Engine catalog
 
-| Engine | `api_base` | `lib_path` | Port | Backend | Status |
-|---|---|---|---|---|---|
-| `yzma` ⭐ | `engines/yzma/lib/llama-server` | `engines/yzma/lib` | 8083 | CPU ARMv8.0 | ✅ Default; fastest tested |
+| Engine | `api_base` | `lib_path` | Port | Model | Backend | Status |
+|---|---|---|---|---|---|---|
+| `yzma` ⭐ | `engines/yzma/lib/llama-server` | `engines/yzma/lib` | 8083 | Q4_0 | CPU ARMv8.0 | ✅ Default |
+| `yzma-q4kxl` | `engines/yzma/lib/llama-server` | `engines/yzma/lib` | 8084 | Q4_K_XL | CPU ARMv8.0 | Higher quality |
+| `yzma-q8` | `engines/yzma/lib/llama-server` | `engines/yzma/lib` | 8085 | Q8_0 | CPU ARMv8.0 | Highest fidelity |
 
 Distinct ports allow running multiple engines simultaneously (e.g. for an A/B benchmark). To switch the default, change `agents.defaults.model_name`. To use a non-default engine for a single call: `qclaw direct --model <name> -m "..."`.
 

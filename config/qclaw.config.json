@@ -5,7 +5,7 @@
       "workspace": "~/.qclaw/workspace",
       "restrict_to_workspace": false,
       "allow_read_outside_workspace": true,
-      "model_name": "llamacli-mpu",
+      "model_name": "yzma",
       "max_tokens": 2048,
       "temperature": 0.3,
       "max_tool_iterations": 8,
@@ -15,9 +15,9 @@
   },
   "model_list": [
     {
-      "model_name": "llamacli-mpu",
+      "model_name": "yzma",
       "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
-      "api_base": "engines/llamacli/mpu/llama-server",
+      "api_base": "engines/yzma/lib/llama-server",
       "api_key": "local",
       "request_timeout": 1200,
       "extra_body": {
@@ -25,7 +25,8 @@
         "threads": 4,
         "ctx_size": 9000,
         "parallel": 1,
-        "port": 8086,
+        "port": 8083,
+        "lib_path": "engines/yzma/lib",
         "extra_args": [
           "--flash-attn", "on",
           "--mlock",
@@ -38,24 +39,26 @@
       }
     },
     {
-      "model_name": "yzma",
-      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "model_name": "yzma-q4kxl",
+      "model": "llama-server/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
       "api_base": "engines/yzma/lib/llama-server",
       "api_key": "local",
       "request_timeout": 1200,
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 16384,
+        "ctx_size": 9000,
         "parallel": 1,
-        "port": 8083,
+        "port": 8084,
         "lib_path": "engines/yzma/lib",
         "extra_args": [
           "--flash-attn", "on",
           "--mlock",
           "--cache-type-k", "q8_0",
           "--cache-type-v", "q8_0",
-          "--reasoning-budget", "800"
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
         ]
       }
     },
@@ -68,16 +71,18 @@
       "extra_body": {
         "models_dir": "~/models",
         "threads": 4,
-        "ctx_size": 16384,
+        "ctx_size": 9000,
         "parallel": 1,
-        "port": 8084,
+        "port": 8085,
         "lib_path": "engines/yzma/lib",
         "extra_args": [
           "--flash-attn", "on",
           "--mlock",
           "--cache-type-k", "q8_0",
           "--cache-type-v", "q8_0",
-          "--reasoning-budget", "800"
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
         ]
       }
     }
