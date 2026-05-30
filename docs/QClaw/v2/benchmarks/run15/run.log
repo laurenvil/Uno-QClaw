@@ -1,0 +1,43 @@
+[00:35:39] Run 15 — Q4_0 yzma study-bible · ctx 9000 · full 9-prompt agentic battery
+[00:35:39] Binary : ./build/qclaw
+[00:35:39] Logs   : docs/QClaw/v2/benchmarks/run15/raw
+[00:35:39] Model  : yzma (Qwen_Qwen3.5-0.8B-Q4_0.gguf, 490 MB, ctx 9000, port 8083)
+[00:35:39] Flags  : --flash-attn on --mlock --cache-type-k q8_0 --cache-type-v q8_0 --reasoning-budget 800 --repeat-penalty 1.1 --repeat-last-n 64
+[00:35:39] TG/PP  : measured via /v1/chat/completions timing probe after each prompt
+[00:35:39] 
+[00:35:39] Killing stale llama-server on port 8083…
+[00:35:41] Sessions cleared
+[00:35:41] 
+[00:35:41] === Prompt 0: breathe  [COLD — server will start now] ===
+[00:35:41]   Prompt: Make the LED on pin 9 breathe — fade in and out smoothly.
+[01:01:23]   Running timing probe…
+[01:01:32]   Wall: 1542s (25m42s) | Iters: 0 | Tools: 1 | PP: 11.32 t/s (31 tok) | TG: 5.13 t/s (30 tok) | Status: ok
+[01:01:32]   Response (99 chars): I'll create a breathing LED on pin 9 using the canonical breathing pattern from the reference file.
+[01:01:32] 
+[01:01:32] === Prompt 1: blink  [warm server] ===
+[01:01:32]   Prompt: Write a sketch that blinks the built-in LED once per second.
+[01:19:28]   Running timing probe…
+[01:19:37]   Wall: 1076s (17m56s) | Iters: 0 | Tools: 1 | PP: 11.46 t/s (31 tok) | TG: 5.15 t/s (30 tok) | Status: ok
+[01:19:37]   Response (233 chars): Done! The sketch `blink.cpp` is ready at `/home/arduino/.qclaw/workspace/sketches/blink.cpp`. It compiles without errors and will blink the 
+[01:19:37] 
+[01:19:37] === Prompt 2: pot  [warm server] ===
+[01:19:37]   Prompt: Read a potentiometer connected to A0 and print its value to the Serial Monitor.
+[02:03:23]   Running timing probe…
+[02:04:05]   Wall: 2626s (43m46s) | Iters: 0 | Tools: 2 | PP: 3.83 t/s (31 tok) | TG: 0.92 t/s (30 tok) | Status: empty_response
+[02:04:05]   Response (102 chars): I've completed processing but have no response to give. Increase `max_tool_iterations` in config.json.
+[02:04:05] 
+[02:04:05] === Prompt 3: button  [warm server] ===
+[02:04:05]   Prompt: When a button on pin 2 is pressed, turn on the LED on pin 13; otherwise turn it off.
+[02:04:05]   Running timing probe…
+[02:04:49]   Wall: 0s (0m0s) | Iters: 0 | Tools: 0 | PP: 3.96 t/s (31 tok) | TG: 0.85 t/s (30 tok) | Status: error(1)
+[02:04:49]   Response (0 chars): 
+[02:04:49] 
+[02:04:49] === Prompt 4: pwm_pins  [warm server] ===
+[02:04:49]   Prompt: Which pins on the Uno Q can do PWM?
+[02:04:49]   Running timing probe…
+[02:05:39]   Wall: 0s (0m0s) | Iters: 0 | Tools: 0 | PP: 3.18 t/s (31 tok) | TG: 0.75 t/s (30 tok) | Status: error(1)
+[02:05:39]   Response (0 chars): 
+[02:05:39] 
+[02:05:39] === Prompt 5: five_volt  [warm server] ===
+[02:05:39]   Prompt: Can I connect a 5V sensor to A0?
+[02:05:39]   Running timing probe…

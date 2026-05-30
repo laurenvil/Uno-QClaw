@@ -283,11 +283,64 @@ ctx 8192 overflows at iter 3 on tool-heavy prompts (Run 13).
 
 Full report: [run14/q4-final-benchmark.md](run14/q4-final-benchmark.md).
 
+### Run 15 — Q4_0 yzma ctx 9000 + repeat-penalty flags (2026-05-29, aborted)
+
+First run with `ctx_size 9000` (down from 16384) and new `--repeat-penalty 1.1 --repeat-last-n 64` flags on the yzma b9127 engine. Aborted after prompt 2 due to KV cache collapse.
+
+| Metric | Value |
+|---|---|
+| Prompts attempted | 3 / 9 (aborted) |
+| Prompts ok | 2 / 3 (breathe, blink) |
+| Status at abort | pot: empty_response + TG collapse; button/pwm_pins: error(1) wall=0s |
+| Cold wall (breathe) | 25m42s |
+| Warm wall (blink) | 17m56s |
+| TG at breathe/blink | 5.13 / 5.15 t/s (normal) |
+| TG at pot probe | **0.92 t/s** (collapsed from 5.15) |
+
+**Root cause:** ctx 9000 is too small for yzma b9127 on multi-tool sessions. The pot prompt accumulated enough session history + tool call context to saturate the 9,216-token KV budget. Once saturated, TG dropped to 0.92 t/s and all subsequent prompts exited immediately (server in degraded state). yzma's newer llama.cpp base (b9127) appears to handle cumulative session KV differently than older builds — ctx 9000 worked correctly for llamacli-mpu (older base, Run 17) but not for yzma.
+
+### Run 16 — llama-wang engine (2026-05-29, crashed prompt 0)
+
+First test of `/home/arduino/ArduinoApps/llama-wang/build/bin/llama-server` — the Adreno-targeted OpenCL fork. Crashed after 37s on prompt 0.
+
+| Metric | Value |
+|---|---|
+| Prompts attempted | 1 / 9 |
+| Crash type | `GGML_ASSERT(0)` at OpenCL kernel compilation |
+| Wall time before crash | 37s |
+
+**Root cause:** Mesa rusticl on the FD702 drops `cl_khr_subgroups`, causing llama.cpp to fall back to the Q4_0 **noshuffle** kernel path. llama-wang is missing all three noshuffle kernels: `gemv_noshuffle_q4_0_f32.cl`, `gemv_noshuffle_q4_0_f32_spec.cl`, `gemm_noshuffle_q4_0_f32.cl`. The `QClaw-GPU-CLI` branch of `assix/Arduino-UnoQ-Optimized-Llama-CLI` adds these kernels — that build became Run 17's engine.
+
+### Run 17 — llamacli-mpu (e6ed0a2, GPU-CLI) ctx 9000 · full 9-prompt battery (2026-05-29)
+
+First successful full battery with the GPU-CLI static binary at ctx 9000. OpenCL init fails (rusticl missing `sub_group_reduce_add`) → CPU fallback. TG matches yzma's LPDDR4X ceiling.
+
+| Metric | Value |
+|---|---|
+| Engine | `engines/llamacli/mpu/llama-server` (e6ed0a2, static 16 MB) |
+| Prompts ok | **7 / 9** |
+| empty_response | 1 / 9 (led_matrix) |
+| error(1) | 1 / 9 (mpu_vs_mcu — ctx overflow: 10,345 tok > 9,216 budget) |
+| Cold wall (breathe) | **26m52s** (−3m56s vs Run 14) |
+| Warm mean wall | **23m27s** (−2m03s vs Run 14) |
+| PP warm avg | **11.40 t/s** |
+| TG warm avg | **5.09 t/s** |
+
+**Headline findings:**
+- llamacli-mpu handles ctx 9000 stably across 8 consecutive warm prompts — no KV collapse
+- Warm wall time is ~8% faster than Run 14 (yzma ctx 16384) purely from smaller prefill cost
+- TG ceiling unchanged at ~5.1 t/s — both engines are LPDDR4X bandwidth-bound on Cortex-A53
+- mpu_vs_mcu overflow is deterministic: that prompt's skill injection totals 10,345 tokens; requires `ctx_size ≥ 11,000`
+- led_matrix empty_response is probabilistic (same pattern as Run 14)
+- Default config reverted to yzma (port 8083) with all run-17 flags; llamacli-mpu retained as `engines/llamacli/mpu/llama-server` for reference
+
+Full report: [run17/run17-llamacli-mpu-benchmark.md](run17/run17-llamacli-mpu-benchmark.md).
+
 ---
 
 **Next steps (in priority order):**
-1. Fix llamacli provider: pass `--repeat-penalty 1.1 --repeat-last-n 64` defaults, expose presence/frequency penalty knobs, add no-progress wall-clock guard. Then re-run Run 9 llama-cli passes.
-2. Warm-direct benchmark on yzma — measure KV prefix-cache hit rate to settle whether persistent server actually helps repeated direct queries
-3. Test `llama-wang/build/bin/llama-server` — only Adreno-targeted OpenCL fork still untested
+1. Run 18: benchmark Qwen3-0.6B-Q4_0 on yzma — validate 9-prompt battery pass rate before adopting as default model (see `docs/QClaw/development/model-research-sub1b.md`)
+2. Fix mpu_vs_mcu ctx overflow: raise `ctx_size` to 11000 in the default yzma entry and re-run that single prompt
+3. Warm-direct benchmark on yzma — measure KV prefix-cache hit rate to settle whether persistent server actually helps repeated direct queries
 4. Patch Adreno kernels to use workgroup-level reductions instead of subgroup reductions (large diff)
 5. Track Mesa rusticl `cl_khr_subgroups` implementation
