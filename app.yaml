@@ -1,0 +1,6 @@
+name: QClaw App Lab Edition
+icon: 🦞
+description: On-device agentic AI for the Arduino Uno Q. Writes, compiles, and uploads sketches; drives MPU LEDs; scans I²C; chats over Telegram — all running locally.
+ports: []
+bricks:
+  - arduino:web_ui

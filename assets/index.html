@@ -1,0 +1,182 @@
+<!--
+SPDX-FileCopyrightText: Copyright (C) ARDUINO SRL (http://www.arduino.cc)
+
+SPDX-License-Identifier: MPL-2.0
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QClaw</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- v1.0.1 hotfix: daemon-banner DOM placed at the very top of <body> so it
+         appears in the initial viewport without scrolling. Card styling (780px
+         centred, 16px top margin) preserved from v1.0.0; only the DOM position
+         changed. Backend (python/main.py) emits
+         {event: "daemon_status", state: "missing"|"ok", command: "..."}
+         on startup and on a periodic re-check. The banner self-hides when
+         state flips to "ok". -->
+    <div id="daemon-banner" style="display: none;">
+        <div id="daemon-banner-inner">
+            <div id="daemon-banner-text">
+                <p id="daemon-banner-title">⚠ One-time host setup needed</p>
+                <p id="daemon-banner-subtitle">
+                    The host-side <code>qclaw-arduino-daemon</code> isn't installed on this board yet.
+                    The agent's <code>arduino</code> tool will fail until you run the launcher once.
+                </p>
+                <div id="daemon-banner-command-wrap">
+                    <code id="daemon-banner-command">bash &lt;path-from-backend&gt;/.scripts/install.sh</code>
+                    <button id="daemon-banner-copy" type="button" title="Copy command to clipboard">Copy</button>
+                </div>
+                <p id="daemon-banner-help">
+                    Paste it into a terminal on the Uno Q (not inside this WebUI).
+                    After it finishes, click <strong>Retry</strong> below.
+                </p>
+            </div>
+            <div id="daemon-banner-actions">
+                <button id="daemon-banner-retry" type="button">I did it — retry</button>
+            </div>
+        </div>
+    </div>
+    <div class="container">
+        <main>
+            <div class="header">
+                <div class="header-left">
+                    <img src="img/RGB-Arduino-Logo-Color-Inline-Loop.svg" alt="Arduino Logo" class="arduino-logo" />
+                    <p class="arduino-text">QClaw</p>
+                    <div class="title-label" id="title-label">on-device llm</div>
+                </div>
+                <div class="header-center">
+                    <div class="mode-pills" id="mode-pills">
+                        <button class="mode-pill active" data-mode="low" title="Direct Python → llama-server. Streaming, rolling history.">Low</button>
+                        <button class="mode-pill" data-mode="medium" title="Go direct path: pre-router + skills. Single LLM call, no tools.">Medium</button>
+                        <button class="mode-pill" data-mode="high" title="Go agent path: full ReAct loop + 8 tools (arduino, camera, i2c…).">High</button>
+                    </div>
+                    <div class="model-selector" id="model-selector">
+                        <button class="model-selector-btn" id="model-selector-btn" title="Switch model">
+                            <span id="active-model-name">yzma</span>
+                            <svg class="model-caret" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <div class="model-dropdown" id="model-dropdown"></div>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button id="settings-button" title="Settings &amp; providers">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:6px">
+                            <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                            <path d="M13.3 6.3l-.9-.5a5.3 5.3 0 0 0 0-1.6l.9-.5a.7.7 0 0 0 .3-.9l-.8-1.4a.7.7 0 0 0-.9-.3l-.9.5A5.3 5.3 0 0 0 9.7 1V0H6.3v1a5.3 5.3 0 0 0-1.3.6l-.9-.5a.7.7 0 0 0-.9.3L2.4 2.8a.7.7 0 0 0 .3.9l.9.5a5.3 5.3 0 0 0 0 1.6l-.9.5a.7.7 0 0 0-.3.9l.8 1.4a.7.7 0 0 0 .9.3l.9-.5c.4.2.8.4 1.3.6v1h3.4v-1c.5-.2.9-.4 1.3-.6l.9.5a.7.7 0 0 0 .9-.3l.8-1.4a.7.7 0 0 0-.3-.9Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>Settings
+                    </button>
+                    <button id="clear-chat-button-header"><img src="img/reset.svg" alt="Reset" style="width: 20px; height: 20px; padding-right: 8px; vertical-align: middle;">Reset chat</button>
+                </div>
+            </div>
+            <div class="main-content">
+                <div id="chat-container">
+                    <div id="chat-messages-container">
+                        <div id="empty-chat-container">
+                            <div class="icon-and-greeting">
+                                <img src="img/green-stars.svg" alt="Green Stars" />
+                                <p class="greeting">Hi there!</p>
+                            </div>
+                            <p class="prompt-question">What's on your mind?</p>
+                            <div class="card-container">
+                                <div id="card-1">
+                                    <img src="img/shining-star.svg" alt="Shining Star" />
+                                    <p>What can you do on the Uno Q?</p>
+                                </div>
+                                <div id="card-2">
+                                    <img src="img/lightbulb.svg" alt="Lightbulb" />
+                                    <p>Write a sketch that blinks the onboard LED</p>
+                                </div>
+                                <div id="card-3">
+                                    <img src="img/emoji.svg" alt="Emoji" />
+                                    <p>Scan the I²C bus and tell me what's connected</p>
+                                </div>
+                                <div id="card-4">
+                                    <img src="img/sun-cloud.svg" alt="Sun Cloud" />
+                                    <p>Explain the MPU vs MCU split on the Uno Q</p>
+                                </div>
+                            </div>
+                            <div id="onboarding-cloud-prompt" class="onboarding-cloud-prompt" style="display:none;">
+                                <img src="img/ai.svg" alt="Cloud AI" class="onboarding-icon" />
+                                <div class="onboarding-text">
+                                    <p class="onboarding-title">Try cloud AI</p>
+                                    <p class="onboarding-desc">Connect Anthropic, OpenAI, or OpenRouter for powerful cloud models alongside local inference.</p>
+                                </div>
+                                <button class="onboarding-btn" id="onboarding-setup-btn">Set up providers →</button>
+                            </div>
+                        </div>
+                        <div id="messages"></div>
+                    </div>
+                    <div id="quick-action-buttons" class="quick-action-buttons-container" style="display: none;">
+                        <button class="quick-action-button">Act as …</button>
+                        <button class="quick-action-button">Answer briefly</button>
+                        <button class="quick-action-button">Answer in rhyme</button>
+                        <button class="quick-action-button">Explain in detail</button>
+                        <button class="quick-action-button">Step-by-step</button>
+                    </div>
+                    <div class="input-container">
+                        <div class="textarea-wrapper">
+                            <textarea id="user-input"></textarea>
+                            <span class="custom-placeholder">Type your message here...</span>
+                        </div>
+                        <button id="send-button"><img src="img/send.svg" alt="Send"></button>
+                    </div>
+                    <p class="disclaimer" id="disclaimer">Running locally on Qwen3.5-0.8B — no cloud, no internet required.</p>
+                    <button id="stop-stream-button" hidden>Stop Stream</button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <div id="error-banner" style="display: none;">
+        <p id="error-message"></p>
+    </div>
+
+    <!-- ── Settings panel ──────────────────────────────────────────────────── -->
+    <div id="settings-overlay" class="settings-overlay">
+        <div id="settings-panel" class="settings-panel">
+            <div class="settings-header">
+                <h2 class="settings-title">Settings</h2>
+                <button id="settings-close" class="settings-close" title="Close">✕</button>
+            </div>
+            <div class="settings-body">
+
+                <!-- Models section -->
+                <section class="settings-section">
+                    <h3 class="settings-section-title">Models</h3>
+                    <div id="settings-model-list" class="settings-model-list">
+                        <div class="settings-loading">Loading…</div>
+                    </div>
+                </section>
+
+                <!-- Add provider section -->
+                <section class="settings-section" id="add-provider-section">
+                    <h3 class="settings-section-title">Add Provider</h3>
+                    <p class="settings-section-hint">Select a provider to configure it:</p>
+                    <div class="provider-chips" id="provider-chips">
+                        <button class="provider-chip" data-provider="anthropic">Anthropic</button>
+                        <button class="provider-chip" data-provider="openrouter">OpenRouter</button>
+                        <button class="provider-chip" data-provider="openai">OpenAI</button>
+                        <button class="provider-chip" data-provider="azure">Azure</button>
+                        <button class="provider-chip" data-provider="litellm">LiteLLM</button>
+                        <button class="provider-chip" data-provider="local">Local (yzma)</button>
+                        <button class="provider-chip" data-provider="custom">Custom</button>
+                    </div>
+                    <div id="add-model-form-container"></div>
+                </section>
+
+            </div>
+        </div>
+    </div>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/lib/marked.umd.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+# QClaw App Lab — Python dependencies
+# Bootstrap uses only stdlib (os, shutil, subprocess, pathlib).
+# No external packages required.

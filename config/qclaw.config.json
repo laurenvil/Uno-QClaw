@@ -1,0 +1,196 @@
+{
+  "_comment": "QClaw configuration for Arduino Uno Q — on-device persistent llama-server inference via engines/yzma.",
+  "agents": {
+    "defaults": {
+      "workspace": "~/.qclaw/workspace",
+      "restrict_to_workspace": false,
+      "allow_read_outside_workspace": true,
+      "model_name": "yzma",
+      "max_tokens": 800,
+      "temperature": 0.3,
+      "max_tool_iterations": 8,
+      "summarize_message_threshold": 10,
+      "summarize_token_percent": 70
+    }
+  },
+  "model_list": [
+    {
+      "model_name": "yzma",
+      "model": "llama-server/Qwen_Qwen3.5-0.8B-Q4_0.gguf",
+      "api_base": "engines/yzma/lib/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 9000,
+        "parallel": 1,
+        "port": 8083,
+        "lib_path": "engines/yzma/lib",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
+        ]
+      }
+    },
+    {
+      "model_name": "yzma-q4kxl",
+      "model": "llama-server/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+      "api_base": "engines/yzma/lib/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 9000,
+        "parallel": 1,
+        "port": 8084,
+        "lib_path": "engines/yzma/lib",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
+        ]
+      }
+    },
+    {
+      "model_name": "yzma-q8",
+      "model": "llama-server/Qwen3.5-0.8B-Q8_0.gguf",
+      "api_base": "engines/yzma/lib/llama-server",
+      "api_key": "local",
+      "request_timeout": 1200,
+      "extra_body": {
+        "models_dir": "~/models",
+        "threads": 4,
+        "ctx_size": 9000,
+        "parallel": 1,
+        "port": 8085,
+        "lib_path": "engines/yzma/lib",
+        "extra_args": [
+          "--flash-attn", "on",
+          "--mlock",
+          "--cache-type-k", "q8_0",
+          "--cache-type-v", "q8_0",
+          "--reasoning-budget", "800",
+          "--repeat-penalty", "1.1",
+          "--repeat-last-n", "64"
+        ]
+      }
+    }
+  ],
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "YOUR_TELEGRAM_BOT_TOKEN",
+      "allow_from": [],
+      "typing": {
+        "enabled": true
+      },
+      "placeholder": {
+        "enabled": true,
+        "text": "Asking QClaw..."
+      }
+    }
+  },
+  "tools": {
+    "exec": {
+      "enabled": false,
+      "enable_deny_patterns": true,
+      "allow_remote": false,
+      "timeout_seconds": 30
+    },
+    "web": {
+      "enabled": false
+    },
+    "web_fetch": {
+      "enabled": false
+    },
+    "cron": {
+      "enabled": false
+    },
+    "skills": {
+      "enabled": false
+    },
+    "find_skills": {
+      "enabled": false
+    },
+    "install_skill": {
+      "enabled": false
+    },
+    "spawn": {
+      "enabled": false
+    },
+    "subagent": {
+      "enabled": false
+    },
+    "mcp": {
+      "enabled": false
+    },
+    "arduino": {
+      "enabled": true,
+      "fqbn": "arduino:zephyr:unoq",
+      "port": "192.168.1.168",
+      "protocol": "network"
+    },
+    "i2c": {
+      "enabled": false
+    },
+    "spi": {
+      "enabled": false
+    },
+    "camera": {
+      "enabled": true
+    },
+    "sysfs_led": {
+      "enabled": true
+    },
+    "network": {
+      "enabled": true
+    },
+    "i2cdetect": {
+      "enabled": true
+    },
+    "message": {
+      "enabled": false
+    },
+    "read_file": {
+      "enabled": true,
+      "max_read_file_size": 65536
+    },
+    "write_file": {
+      "enabled": true
+    },
+    "append_file": {
+      "enabled": false
+    },
+    "edit_file": {
+      "enabled": false
+    },
+    "list_dir": {
+      "enabled": true
+    },
+    "send_file": {
+      "enabled": false
+    }
+  },
+  "heartbeat": {
+    "enabled": false
+  },
+  "devices": {
+    "enabled": true,
+    "monitor_usb": true
+  },
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18790
+  }
+}
